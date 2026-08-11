@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy – FlowShift - Stop Scrolling</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.7;
+            color: #e0e0e0;
+            background-color: #0a0a0a;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #141414;
+            border-radius: 16px;
+            padding: 3rem 2.5rem;
+            border: 1px solid #1e1e1e;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: #00bcd4;
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+            font-weight: 500;
+        }
+
+        .effective-date {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 2.5rem;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-top: 2rem;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.4rem;
+            border-bottom: 1px solid #222;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: #bbb;
+        }
+
+        ul {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: #bbb;
+        }
+
+        strong {
+            color: #e0e0e0;
+        }
+
+        a {
+            color: #00bcd4;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .highlight-box {
+            background: #1a2332;
+            border-left: 4px solid #00bcd4;
+            padding: 1rem 1.25rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1.5rem 0;
+        }
+
+        .highlight-box p {
+            margin-bottom: 0;
+            color: #ccc;
+        }
+
+        .footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #222;
+            font-size: 0.85rem;
+            color: #666;
+            text-align: center;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 2rem 1.25rem;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Privacy Policy</h1>
+        <p class="subtitle">FlowShift – Stop Scrolling</p>
+        <p class="effective-date"><strong>Effective Date:</strong> July 6, 2026</p>
+
+        <div class="highlight-box">
+            <p><strong>Summary:</strong> FlowShift – Stop Scrolling is a completely offline app that does <strong>not collect, share, or transmit</strong> any personal information, app usage statistics, or camera data to any servers. All features—including app blocking and camera-based exercises—operate 100% locally on your device. We don't even have internet permissions.
+            </p>
+        </div>
+
+        <h2>1. Introduction</h2>
+        <p>
+            This Privacy Policy explains how <strong>FlowShift – Stop Scrolling</strong> ("we", "our", or "the App")
+            handles information when you use our Android application. We are committed to protecting your privacy and
+            providing full transparency regarding our data practices.
+        </p>
+        <p>
+            By using the App, you agree to the practices described in this Privacy Policy.
+        </p>
+
+        <h2>2. Information We Collect</h2>
+        <p>
+            <strong>We do not collect any personal information.</strong> The App operates entirely offline and does not require an account, login, or any personal details to function. Specifically:
+        </p>
+        <ul>
+            <li>We do <strong>not</strong> collect your name, email address, phone number, or any personally identifiable information.</li>
+            <li>We do <strong>not</strong> collect location data.</li>
+            <li>We do <strong>not</strong> use any analytics trackers or advertising networks (there are no ads in the App).</li>
+            <li>The App does <strong>not</strong> have the Android Internet permission (`android.permission.INTERNET`), meaning it is physically impossible for the App to send your data anywhere.</li>
+        </ul>
+
+        <h2>3. Data Stored Locally on Your Device</h2>
+        <p>
+            To provide its core functionality, the App processes and stores certain data <strong>locally on your device only</strong>:
+        </p>
+        <ul>
+            <li><strong>App Usage Data:</strong> The App uses the Package Usage Stats permission to monitor which apps you are using and for how long. This data is strictly used to enforce the time limits and blocks you have configured. It is processed in real-time and stored locally.</li>
+            <li><strong>App Settings & Limits:</strong> Your configured screen time limits, blocked app lists, and preferences are stored securely on your device.</li>
+            <li><strong>Camera Data:</strong> During exercise challenges, the App uses your camera to track your movements. These camera frames are processed in real-time in the device's memory and are <strong>never saved, recorded, or transmitted.</strong></li>
+        </ul>
+        <p>
+            This data is stored using Android's Room database and DataStore Preferences. It remains entirely on your device and is <strong>never transmitted</strong> to any server or third party. If you uninstall the App or clear its data, all locally stored data is permanently deleted.
+        </p>
+
+        <h2>4. Camera Usage & Exercise Tracking</h2>
+        <p>
+            The App requests <strong>camera permission</strong> to facilitate physical exercise challenges designed to help you stop scrolling and regain focus.
+        </p>
+        <ul>
+            <li>The camera is used for real-time motion and pose tracking using on-device machine learning (Google MediaPipe).</li>
+            <li>The video frames are analyzed <strong>live in memory</strong> solely to count your repetitions or verify your exercises.</li>
+            <li>No video or images are ever captured, saved to your gallery, or transmitted over the internet.</li>
+            <li>All machine learning processing happens <strong>entirely on your device</strong>, without connecting to external servers.</li>
+        </ul>
+
+        <h2>5. Permissions Explained</h2>
+        <p>The App requests the following Android permissions, all of which are strictly required for its core app-blocking and exercise features:</p>
+        <ul>
+            <li><strong>Usage Access (PACKAGE_USAGE_STATS):</strong> Required to monitor which apps are currently running so the App can enforce your time limits and block distracting apps.</li>
+            <li><strong>Display Over Other Apps (SYSTEM_ALERT_WINDOW):</strong> Required to draw the blocking screen over distracting apps when your set time limits are reached or an exercise challenge is triggered.</li>
+            <li><strong>Camera:</strong> Required for the exercise tracking challenges to verify your physical movements using on-device vision models.</li>
+            <li><strong>Foreground Service:</strong> Required to keep the time-tracking service running reliably in the background so your app limits are accurately enforced even when FlowShift is closed.</li>
+        </ul>
+
+        <h2>6. Third-Party Services</h2>
+        <p>
+            The App utilizes <strong>Google MediaPipe Tasks Vision</strong> for on-device pose detection and movement tracking during exercise challenges. This machine learning library processes data <strong>entirely locally on your device</strong> and does not send any camera feeds, images, or telemetry to Google or any external servers. 
+        </p>
+
+        <h2>7. Data Sharing</h2>
+        <p>
+            Because the App operates 100% offline and lacks internet access permissions, we do <strong>not share, sell, or transmit</strong> any of your data to third parties, analytics providers, or advertising networks.
+        </p>
+
+        <h2>8. Children's Privacy</h2>
+        <p>
+            The App does not knowingly collect any personal information from anyone, including children under the age of 13. Since the App operates entirely offline and collects no personal data whatsoever, it is safe for users of all ages.
+        </p>
+
+        <h2>9. Data Security</h2>
+        <p>
+            All data generated by the App is stored locally on your device using Android's built-in secure storage mechanisms. Because the data never leaves your device, its security is guaranteed by your device's operating system and screen lock protections.
+        </p>
+
+        <h2>10. Data Retention and Deletion</h2>
+        <p>
+            All App data is stored locally on your device. You can delete all data at any time by:
+        </p>
+        <ul>
+            <li>Clearing the App's data through your device's Settings → Apps → FlowShift → Storage → Clear Data.</li>
+            <li>Uninstalling the App, which automatically removes all associated data.</li>
+        </ul>
+
+        <h2>11. Changes to This Privacy Policy</h2>
+        <p>
+            We may update this Privacy Policy from time to time to reflect changes in our practices or app features. Any changes will be reflected on this page with an updated "Effective Date."
+        </p>
+
+        <h2>12. Contact Us</h2>
+        <p>
+            If you have any questions or concerns about this Privacy Policy or the App's data practices, please contact us at:
+        </p>
+        <p>
+            <strong>Email:</strong> <a href="mailto:[Your Contact Email]">[Your Contact Email]</a>
+        </p>
+
+        <div class="footer">
+            <p>&copy; 2026 FlowShift – Stop Scrolling. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+
+</html>

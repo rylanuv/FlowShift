@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Stop Scrolling</string>
+    <string name="app_launcher_name">Stop Scrolling</string>
+    <string name="accessibility_service_description">Used by FlowShift to detect when you are scrolling addictive short-form content like Reels or Shorts, in order to help you regain focus and stop doomscrolling.</string>
+</resources>

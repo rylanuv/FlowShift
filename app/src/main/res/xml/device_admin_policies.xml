@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <!-- This policy implies we can show a prompt when uninstall is attempted, 
+             or effectively prevent uninstalling while admin is active. -->
+    </uses-policies>
+</device-admin>
