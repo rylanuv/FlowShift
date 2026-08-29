@@ -30,14 +30,7 @@ fun EasyModeSettingsScreen(
 ) {
     val waitSeconds by viewModel.easyModeWaitSeconds.collectAsStateWithLifecycle()
 
-    val options = listOf(
-        15 to "15 Seconds",
-        30 to "30 Seconds",
-        60 to "60 Seconds",
-        90 to "90 Seconds",
-        120 to "2 Minutes",
-        180 to "3 Minutes"
-    )
+
 
     Column(
         modifier = Modifier
@@ -87,32 +80,43 @@ fun EasyModeSettingsScreen(
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
-        options.forEach { (seconds, label) ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.05f))
-                    .clickable { viewModel.setEasyModeWaitSeconds(seconds) }
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = label,
-                    color = TextPrimary,
-                    fontSize = 16.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                RadioButton(
-                    selected = waitSeconds == seconds,
-                    onClick = { viewModel.setEasyModeWaitSeconds(seconds) },
-                    colors = RadioButtonDefaults.colors(
-                        selectedColor = ModeEasyAccent,
-                        unselectedColor = TextSecondary
-                    )
-                )
-            }
+        val label = when {
+            waitSeconds == 60 -> "1 Minute"
+            waitSeconds % 60 == 0 -> "${waitSeconds / 60} Minutes"
+            waitSeconds > 60 -> "${waitSeconds / 60} Min ${waitSeconds % 60} Sec"
+            else -> "$waitSeconds Seconds"
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.05f))
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = label,
+                color = TextPrimary,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            Slider(
+                value = waitSeconds.toFloat(),
+                onValueChange = { viewModel.setEasyModeWaitSeconds(it.toInt()) },
+                valueRange = 15f..180f,
+                steps = 10,
+                colors = SliderDefaults.colors(
+                    thumbColor = ModeEasyAccent,
+                    activeTrackColor = ModeEasyAccent,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.2f),
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

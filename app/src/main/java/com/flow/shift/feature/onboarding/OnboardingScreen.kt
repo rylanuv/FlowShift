@@ -4,6 +4,7 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.content.pm.PackageManager
@@ -33,12 +34,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -61,51 +62,10 @@ import com.flow.shift.R
 import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.theme.*
 import kotlin.math.roundToInt
+import coil.compose.AsyncImage
+import androidx.compose.foundation.lazy.LazyRow
 
-// ════════════════════════════════════════════════════════════════════
-//  GLASSMORPHISM CONSTANTS
-// ════════════════════════════════════════════════════════════════════
 
-// Frosted glass surface colors
-private val GlassWhite = Color.White.copy(alpha = 0.10f)
-private val GlassBorder = Color.White.copy(alpha = 0.18f)
-private val GlassCardBg = Color.White.copy(alpha = 0.08f)
-private val GlassScrim = Color.Black.copy(alpha = 0.45f)
-private val GlassHighlight = Color.White.copy(alpha = 0.05f)
-
-/**
- * A reusable frosted-glass card container.
- */
-@Composable
-private fun GlassCard(
-    modifier: Modifier = Modifier,
-    cornerRadius: Int = 20,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(cornerRadius.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.12f),
-                        Color.White.copy(alpha = 0.06f)
-                    )
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.25f),
-                        Color.White.copy(alpha = 0.08f)
-                    )
-                ),
-                shape = RoundedCornerShape(cornerRadius.dp)
-            ),
-        content = content
-    )
-}
 
 /**
  * Shared background layer: the onboarding image with blur + dark scrim overlay.
@@ -117,9 +77,7 @@ private fun OnboardingBackground() {
             painter = painterResource(id = R.drawable.onboarding_bg_2),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(1.dp)
+            modifier = Modifier.fillMaxSize()
         )
         // Dark scrim for contrast
         Box(
@@ -153,9 +111,6 @@ fun OnboardingScreen(
     val selectedMode by viewModel.selectedMode.collectAsStateWithLifecycle()
     val selectedChallengeType by viewModel.selectedChallengeType.collectAsStateWithLifecycle()
     val challengeAmount by viewModel.challengeAmount.collectAsStateWithLifecycle()
-    val appList by viewModel.appList.collectAsStateWithLifecycle()
-    val isLoadingApps by viewModel.isLoadingApps.collectAsStateWithLifecycle()
-    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var hasUsagePermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
@@ -164,12 +119,18 @@ fun OnboardingScreen(
     var hasCameraPermission by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
+    
+    // OEM specific permissions
+    val isChineseOEM = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+    var hasAutostartPermission by remember { mutableStateOf(!isChineseOEM) }
+    var hasBackgroundWindowsPermission by remember { mutableStateOf(hasBackgroundWindowPermission(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         hasUsagePermission = hasUsageStatsPermission(context)
         hasOverlayPermission = Settings.canDrawOverlays(context)
         hasAccessibilityPermission = hasAccessibilityPermission(context)
         hasCameraPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        hasBackgroundWindowsPermission = hasBackgroundWindowPermission(context)
     }
 
     // Can proceed to next step?
@@ -179,7 +140,7 @@ fun OnboardingScreen(
         2 -> true // Target screen time — slider always valid
         3 -> true // Mode — always has a default (EASY)
         4 -> true // Apps — optional, can skip
-        5 -> hasUsagePermission && hasOverlayPermission && hasCameraPermission && hasAccessibilityPermission // Permissions — must grant all
+        5 -> hasUsagePermission && hasOverlayPermission && hasAccessibilityPermission && hasAutostartPermission && hasBackgroundWindowsPermission
         6 -> true // All set — always
         else -> false
     }
@@ -246,18 +207,22 @@ fun OnboardingScreen(
                         onSelectChallengeAmount = { viewModel.selectChallengeAmount(it) }
                     )
                     4 -> AppSelectionStep(
-                        apps = appList,
-                        isLoading = isLoadingApps,
-                        searchQuery = searchQuery,
-                        onSearchQueryChange = { viewModel.updateSearchQuery(it) },
-                        onToggleApp = { app, blocked -> viewModel.toggleAppBlocked(app, blocked) }
+                        viewModel = viewModel
                     )
                     5 -> PermissionsStep(
                         context = context,
                         hasUsagePermission = hasUsagePermission,
                         hasOverlayPermission = hasOverlayPermission,
-                        hasCameraPermission = hasCameraPermission,
-                        hasAccessibilityPermission = hasAccessibilityPermission
+                        hasAccessibilityPermission = hasAccessibilityPermission,
+                        hasAutostartPermission = hasAutostartPermission,
+                        hasBackgroundWindowsPermission = hasBackgroundWindowsPermission,
+                        onAutostartClick = {
+                            hasAutostartPermission = true
+                            openAutostartSettings(context)
+                        },
+                        onBackgroundWindowsClick = {
+                            openBackgroundWindowsSettings(context)
+                        }
                     )
                     6 -> AllSetStep(
                         selectedMode = selectedMode,
@@ -390,6 +355,25 @@ private fun OnboardingBottomBar(
 
 @Composable
 private fun WelcomeStep(onGetStarted: () -> Unit) {
+    val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        onGetStarted()
+    }
+
+    val handleGetStarted = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                onGetStarted()
+            } else {
+                permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } else {
+            onGetStarted()
+        }
+    }
+
     // Pulsing glow animation
     val infiniteTransition = rememberInfiniteTransition(label = "glow")
     val glowScale by infiniteTransition.animateFloat(
@@ -449,8 +433,11 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .size(160.dp)
-                        .scale(glowScale)
-                        .alpha(glowAlpha)
+                        .graphicsLayer { 
+                            scaleX = glowScale
+                            scaleY = glowScale
+                            alpha = glowAlpha
+                        }
                         .clip(CircleShape)
                         .background(neonCyan.copy(alpha = 0.15f))
                 )
@@ -498,7 +485,7 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 lineHeight = 44.sp,
-                modifier = Modifier.alpha(titleAlpha)
+                modifier = Modifier.graphicsLayer { alpha = titleAlpha }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -510,7 +497,7 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
                 fontSize = 18.sp,
                 textAlign = TextAlign.Center,
                 lineHeight = 26.sp,
-                modifier = Modifier.alpha(subtitleAlpha)
+                modifier = Modifier.graphicsLayer { alpha = subtitleAlpha }
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -524,11 +511,11 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             Button(
-                onClick = onGetStarted,
+                onClick = handleGetStarted,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .alpha(buttonAlpha),
+                    .graphicsLayer { alpha = buttonAlpha },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Amber500,
                     contentColor = SurfaceBlack
@@ -653,7 +640,10 @@ private fun ScreenTimeSliderStep(
             modifier = Modifier
                 .padding(vertical = 24.dp)
                 .height(80.dp) // Fixed height prevents shifting layout
-                .scale(scale.value),
+                .graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                },
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -845,7 +835,10 @@ private fun TargetScreenTimeSliderStep(
             modifier = Modifier
                 .padding(vertical = 24.dp)
                 .height(80.dp) // Fixed height prevents shifting layout
-                .scale(scale.value),
+                .graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                },
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -992,7 +985,7 @@ private fun ModeSelectionStep(
         // Discipline
         OnboardingModeCard(
             title = "Discipline",
-            description = "Perform pushups or solve advanced maths to earn scroll time.",
+            description = "Perform pushups or solve maths to earn scroll time.",
             icon = Icons.Default.Psychology,
             accentColor = ModeStrictAccent,
             isSelected = selectedMode == BlockingMode.STRICT,
@@ -1007,78 +1000,11 @@ private fun ModeSelectionStep(
         ) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 Text(
-                    text = "Pick your challenge",
+                    text = "You can configure your challenge later in the app.",
                     color = TextSecondary,
                     fontFamily = AppFontFamily,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OnboardingChallengeChip(
-                        label = "Pushups",
-                        icon = Icons.Default.FitnessCenter,
-                        isSelected = selectedChallengeType == "PUSHUPS",
-                        onClick = { onSelectChallengeType("PUSHUPS") },
-                        modifier = Modifier.weight(1f).fillMaxHeight()
-                    )
-                    OnboardingChallengeChip(
-                        label = "Math Problems",
-                        icon = Icons.Default.Psychology,
-                        isSelected = selectedChallengeType == "MATH",
-                        onClick = { onSelectChallengeType("MATH") },
-                        modifier = Modifier.weight(1f).fillMaxHeight()
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                var sliderValue by remember(challengeAmount) { mutableFloatStateOf(challengeAmount.toFloat()) }
-                val displayAmount = if (selectedChallengeType == "MATH") {
-                    sliderValue.roundToInt()
-                } else {
-                    (sliderValue / 5f).roundToInt() * 5
-                }
-
-                Text(
-                    text = "Amount: $displayAmount",
-                    color = TextSecondary,
-                    fontFamily = AppFontFamily,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
-
-                val minAmt = if (selectedChallengeType == "MATH") 1f else 5f
-                val maxAmt = if (selectedChallengeType == "MATH") 30f else 100f
-
-                val sliderColors = SliderDefaults.colors(
-                    thumbColor = ModeStrictAccent,
-                    activeTrackColor = ModeStrictAccent,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.12f),
-                    activeTickColor = Color.Transparent,
-                    inactiveTickColor = Color.Transparent
-                )
-                Slider(
-                    value = sliderValue,
-                    onValueChange = { sliderValue = it },
-                    onValueChangeFinished = {
-                        onSelectChallengeAmount(displayAmount)
-                    },
-                    valueRange = minAmt..maxAmt,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = sliderColors,
-                    track = { sliderState ->
-                        SliderDefaults.Track(
-                            colors = sliderColors,
-                            enabled = true,
-                            sliderState = sliderState,
-                            drawStopIndicator = null
-                        )
-                    }
                 )
             }
         }
@@ -1197,48 +1123,7 @@ private fun OnboardingModeCard(
     }
 }
 
-@Composable
-private fun OnboardingChallengeChip(
-    label: String,
-    icon: ImageVector,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (isSelected) ModeStrictAccent.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.07f))
-            .border(
-                width = if (isSelected) 1.dp else 1.dp,
-                color = if (isSelected) ModeStrictAccent.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(14.dp)
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() }
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (isSelected) ModeStrictAccent else TextSecondary,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = label,
-                color = if (isSelected) ModeStrictAccent else TextSecondary,
-                fontFamily = AppFontFamily,
-                fontSize = 13.sp,
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-            )
-        }
-    }
-}
+
 
 // ════════════════════════════════════════════════════════════════════
 //  STEP 5: APP SELECTION
@@ -1246,19 +1131,18 @@ private fun OnboardingChallengeChip(
 
 @Composable
 private fun AppSelectionStep(
-    apps: List<OnboardingAppItem>,
-    isLoading: Boolean,
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
-    onToggleApp: (OnboardingAppItem, Boolean) -> Unit
+    viewModel: OnboardingViewModel
 ) {
+    val apps by viewModel.appList.collectAsStateWithLifecycle()
+    val topApps by viewModel.topAppsList.collectAsStateWithLifecycle()
+    val otherApps by viewModel.otherAppsList.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoadingApps.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    
+    val onSearchQueryChange: (String) -> Unit = { viewModel.updateSearchQuery(it) }
+    val onToggleApp: (OnboardingAppItem, Boolean) -> Unit = { app, blocked -> viewModel.toggleAppBlocked(app, blocked) }
+
     var isMoreAppsExpanded by remember { mutableStateOf(false) }
-    val topApps = remember(apps) {
-        apps.filter { it.isBlocked || AppSortingHelper.isSocialOrTopApp(it.packageName, it.appName) }
-    }
-    val otherApps = remember(apps) {
-        apps.filter { !it.isBlocked && !AppSortingHelper.isSocialOrTopApp(it.packageName, it.appName) }
-    }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -1349,14 +1233,14 @@ private fun AppSelectionStep(
                 contentPadding = PaddingValues(horizontal = 24.dp)
             ) {
                 if (searchQuery.isNotBlank()) {
-                    items(apps, key = { it.packageName }) { app ->
+                    items(apps, key = { it.packageName }, contentType = { "app_item" }) { app ->
                         OnboardingAppListItem(
                             app = app,
                             onToggle = { isBlocked -> onToggleApp(app, isBlocked) }
                         )
                     }
                 } else {
-                    items(topApps, key = { it.packageName }) { app ->
+                    items(topApps, key = { it.packageName }, contentType = { "app_item" }) { app ->
                         OnboardingAppListItem(
                             app = app,
                             onToggle = { isBlocked -> onToggleApp(app, isBlocked) }
@@ -1372,7 +1256,7 @@ private fun AppSelectionStep(
                             )
                         }
                         if (isMoreAppsExpanded) {
-                            items(otherApps, key = { it.packageName }) { app ->
+                            items(otherApps, key = { it.packageName }, contentType = { "app_item" }) { app ->
                                 OnboardingAppListItem(
                                     app = app,
                                     onToggle = { isBlocked -> onToggleApp(app, isBlocked) }
@@ -1488,9 +1372,18 @@ private fun PermissionsStep(
     context: Context,
     hasUsagePermission: Boolean,
     hasOverlayPermission: Boolean,
-    hasCameraPermission: Boolean,
-    hasAccessibilityPermission: Boolean
+    hasAccessibilityPermission: Boolean,
+    hasAutostartPermission: Boolean,
+    hasBackgroundWindowsPermission: Boolean,
+    onAutostartClick: () -> Unit,
+    onBackgroundWindowsClick: () -> Unit
 ) {
+    var showHelpBottomSheet by remember { mutableStateOf(false) }
+
+    if (showHelpBottomSheet) {
+        PermissionHelpSheet(onDismissRequest = { showHelpBottomSheet = false })
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1551,23 +1444,7 @@ private fun PermissionsStep(
 
         Spacer(modifier = Modifier.height(36.dp))
 
-        val cameraLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestPermission(),
-            onResult = { } // LifecycleEventEffect handles the state update
-        )
-
-        // Camera Access
-        PermissionCard(
-            icon = Icons.Default.CameraAlt,
-            title = "Camera Access",
-            description = "Used for AI push-up detection during strict mode challenges.",
-            isGranted = hasCameraPermission,
-            onClick = {
-                cameraLauncher.launch(android.Manifest.permission.CAMERA)
-            }
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))        // Usage Access
+        // Usage Access
         PermissionCard(
             icon = Icons.Default.QueryStats,
             title = "Usage Access",
@@ -1604,18 +1481,78 @@ private fun PermissionsStep(
         Spacer(modifier = Modifier.height(14.dp))
 
         // Accessibility
+        var showAccessibilityDialog by remember { mutableStateOf(false) }
+
+        if (showAccessibilityDialog) {
+            com.flow.shift.core.designsystem.AccessibilityDisclosureDialog(
+                onDismiss = { showAccessibilityDialog = false },
+                onAccept = {
+                    showAccessibilityDialog = false
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    context.startActivity(intent)
+                }
+            )
+        }
+
         PermissionCard(
             icon = Icons.Default.Accessibility,
             title = "Accessibility",
             description = "Allows us to detect when you're scrolling Reels or Shorts.",
             isGranted = hasAccessibilityPermission,
             onClick = {
-                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                context.startActivity(intent)
+                showAccessibilityDialog = true
             }
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        val isChineseOEM = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+        
+        if (isChineseOEM) {
+            // Background Autostart
+            PermissionCard(
+                icon = Icons.Default.Settings,
+                title = "Autostart",
+                description = "Prevents your phone from stopping the app in the background.",
+                isGranted = hasAutostartPermission,
+                onClick = onAutostartClick
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Background Windows
+            PermissionCard(
+                icon = Icons.Default.OpenInNew,
+                title = "Background Windows",
+                description = "Allows the blocker screen to open from the background.",
+                isGranted = hasBackgroundWindowsPermission,
+                onClick = onBackgroundWindowsClick
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        TextButton(
+            onClick = { showHelpBottomSheet = true },
+            modifier = Modifier.padding(bottom = 32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.HelpOutline,
+                contentDescription = null,
+                tint = Amber500,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Help, I can't find the permissions",
+                color = Amber500,
+                fontFamily = AppFontFamily,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
 }
 
@@ -1881,3 +1818,217 @@ private fun hasUsageStatsPermission(context: Context): Boolean {
     return mode == AppOpsManager.MODE_ALLOWED
 }
 
+private fun openAutostartSettings(context: Context) {
+    val intents = listOf(
+        Intent().setComponent(android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
+        Intent().setComponent(android.content.ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity")),
+        Intent().setComponent(android.content.ComponentName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity")),
+        Intent().setComponent(android.content.ComponentName("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity")),
+        Intent().setComponent(android.content.ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")),
+        Intent().setComponent(android.content.ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity")),
+        Intent().setComponent(android.content.ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager")),
+        Intent().setComponent(android.content.ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity")),
+        Intent().setComponent(android.content.ComponentName("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity")),
+        Intent().setComponent(android.content.ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity")),
+        Intent().setComponent(android.content.ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"))
+    )
+
+    for (intent in intents) {
+        try {
+            if (context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null) {
+                context.startActivity(intent)
+                return
+            }
+        } catch (e: Exception) {
+            // Ignore and try the next one
+        }
+    }
+
+    openAppSettings(context)
+}
+
+private fun openBackgroundWindowsSettings(context: Context) {
+    try {
+        val intent = Intent("miui.intent.action.APP_PERM_EDITOR").apply {
+            setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+            putExtra("extra_pkgname", context.packageName)
+        }
+        if (context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null) {
+            context.startActivity(intent)
+            return
+        }
+    } catch (e: Exception) {
+        // Fallback
+    }
+    
+    openAppSettings(context)
+}
+
+private fun openAppSettings(context: Context) {
+    try {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        // Fallback
+    }
+}
+
+private fun hasBackgroundWindowPermission(context: Context): Boolean {
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    if (manufacturer !in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")) {
+        return true
+    }
+    
+    try {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val op = try {
+            val field = AppOpsManager::class.java.getDeclaredField("OP_BACKGROUND_START_ACTIVITY")
+            field.getInt(null)
+        } catch (e: Exception) {
+            10021
+        }
+        
+        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
+        val mode = method.invoke(appOps, op, Process.myUid(), context.packageName) as Int
+        return mode == AppOpsManager.MODE_ALLOWED
+    } catch (e: Exception) {
+        // If we can't check it programmatically, default to true to not block the user
+        return true
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  HELP SHEET — Brand Specific Permission Guide
+// ════════════════════════════════════════════════════════════════════
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PermissionHelpSheet(
+    onDismissRequest: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val brands = listOf("Samsung", "Xiaomi/Poco", "Oppo/OnePlus", "Vivo", "Other")
+    var selectedBrand by remember { mutableStateOf(brands.first()) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        containerColor = SurfaceBlack,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.3f)) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Enable Permissions",
+                color = TextPrimary,
+                fontFamily = AppFontFamily,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Select your phone brand for specific instructions on enabling permissions.",
+                color = TextSecondary,
+                fontFamily = AppFontFamily,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Brand selection
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(brands) { brand ->
+                    val isSelected = brand == selectedBrand
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isSelected) Amber500 else Color.White.copy(alpha = 0.1f))
+                            .clickable { selectedBrand = brand }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = brand,
+                            color = if (isSelected) SurfaceBlack else TextPrimary,
+                            fontFamily = AppFontFamily,
+                            fontSize = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Guide Content
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.05f))
+                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                    .padding(16.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item {
+                        val guideText = when (selectedBrand) {
+                            "Samsung" -> "1. Go to Settings -> Apps\n2. Find FlowShift\n3. Allow 'Appear on top'\n4. Go to Battery -> Unrestricted\n5. Enable Accessibility permission."
+                            "Xiaomi/Poco" -> "1. Go to Settings -> Apps -> Manage apps -> FlowShift\n2. Enable 'Autostart'\n3. Go to 'Other permissions' and enable 'Display pop-up windows while running in the background'\n4. Go to Battery saver -> No restrictions."
+                            "Oppo/OnePlus" -> "1. Go to Settings -> Apps -> App management -> FlowShift\n2. Enable 'Auto-startup'\n3. Go to 'Battery usage' and enable 'Allow background activity'.\n4. Enable 'Display over other apps'."
+                            "Vivo" -> "1. Go to Settings -> Apps -> FlowShift\n2. Enable 'Auto-start'\n3. Go to 'Permissions' -> 'Single permission settings' -> Enable 'Display on lock screen' and 'Background pop-ups'.\n4. Battery -> High background power consumption -> Allow."
+                            else -> "1. Go to your phone's Settings -> Apps -> FlowShift\n2. Look for 'Draw over other apps' or 'Appear on top' and enable it.\n3. Look for 'Autostart' or 'Auto-launch' and enable it.\n4. Ensure Battery optimization is set to 'Unrestricted'."
+                        }
+
+                        val imageUrl = when (selectedBrand) {
+                            "Xiaomi/Poco" -> "https://dontkillmyapp.com/images/xiaomi/xiaomi_autostart.png"
+                            "Samsung" -> "https://dontkillmyapp.com/images/samsung/samsung_battery_unrestricted.png"
+                            "Oppo/OnePlus" -> "https://dontkillmyapp.com/images/oneplus/oneplus_battery_optimization.png"
+                            "Vivo" -> "https://dontkillmyapp.com/images/vivo/vivo_auto_start.png"
+                            else -> "https://dontkillmyapp.com/images/stock/stock_battery.png"
+                        }
+
+                        Column {
+                            Text(
+                                text = guideText,
+                                color = TextPrimary,
+                                fontFamily = AppFontFamily,
+                                fontSize = 15.sp,
+                                lineHeight = 24.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = "Guide Screenshot",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 250.dp)
+                                    .clip(RoundedCornerShape(12.dp)),
+                                contentScale = ContentScale.FillWidth
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

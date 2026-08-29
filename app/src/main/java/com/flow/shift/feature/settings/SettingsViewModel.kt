@@ -41,6 +41,12 @@ class SettingsViewModel @Inject constructor(
         initialValue = "EASY"
     )
 
+    val isPremium: StateFlow<Boolean> = settingsDataStore.isPremium.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
+    )
+
     val isDeveloperModeEnabled: StateFlow<Boolean> = settingsDataStore.isDeveloperModeEnabled.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -56,10 +62,11 @@ class SettingsViewModel @Inject constructor(
         ) { strictMode, emergencyPasses, preventUninstall -> Triple(strictMode, emergencyPasses, preventUninstall) },
         combine(
             settingsDataStore.blockSettingsAccess,
-            settingsDataStore.lockDuringFocus
-        ) { blockSettings, lockFocus -> Pair(blockSettings, lockFocus) }
+            settingsDataStore.lockDuringFocus,
+            settingsDataStore.preventDisablingFocusMode
+        ) { blockSettings, lockFocus, preventDisabling -> Triple(blockSettings, lockFocus, preventDisabling) }
     ) { first, second ->
-        ProtectionState(first.first, first.second, first.third, second.first, second.second)
+        ProtectionState(first.first, first.second, first.third, second.first, second.second, second.third)
     }.combine(
         combine(
             settingsDataStore.breakDurationMinutes,
@@ -96,8 +103,9 @@ class SettingsViewModel @Inject constructor(
         combine(
             combine(
                 settingsDataStore.theme,
-                settingsDataStore.animationsEnabled
-            ) { theme, animations -> AppearanceState(theme, animations) },
+                settingsDataStore.animationsEnabled,
+                settingsDataStore.showReelCount
+            ) { theme, animations, showReelCount -> AppearanceState(theme, animations, showReelCount) },
             combine(
                 settingsDataStore.challengeDifficulty,
                 settingsDataStore.randomizeChallenges,
@@ -121,20 +129,32 @@ class SettingsViewModel @Inject constructor(
     ) { sevenState, (blockType, targetScreenTime) ->
         EightState(sevenState, blockType, targetScreenTime)
     }
-    .combine(gamificationFlow) { eightState, gamification ->
+    .combine(
+        combine(
+            settingsDataStore.isDeveloperModeEnabled,
+            settingsDataStore.pretendSubscribed,
+            settingsDataStore.bypassDowngradeWaitTime
+        ) { devMode, pretendSubscribed, bypassDowngradeWaitTime -> Triple(devMode, pretendSubscribed, bypassDowngradeWaitTime) }
+    ) { eightState, (devMode, pretendSubscribed, bypassDowngradeWaitTime) ->
+        NineState(eightState, devMode, pretendSubscribed, bypassDowngradeWaitTime)
+    }
+    .combine(gamificationFlow) { nineState, gamification ->
         SettingsUiState(
-            protection = eightState.sevenState.sixState.protection,
-            breakRules = eightState.sevenState.sixState.breakRules,
-            intervention = eightState.sevenState.sixState.intervention,
-            notifications = eightState.sevenState.sixState.notifications,
-            appearance = eightState.sevenState.sixState.appearance,
-            challenges = eightState.sevenState.sixState.challenges,
-            blockedApps = eightState.sevenState.blockedApps,
-            blockType = eightState.blockType,
-            targetScreenTime = eightState.targetScreenTime,
+            protection = nineState.eightState.sevenState.sixState.protection,
+            breakRules = nineState.eightState.sevenState.sixState.breakRules,
+            intervention = nineState.eightState.sevenState.sixState.intervention,
+            notifications = nineState.eightState.sevenState.sixState.notifications,
+            appearance = nineState.eightState.sevenState.sixState.appearance,
+            challenges = nineState.eightState.sevenState.sixState.challenges,
+            blockedApps = nineState.eightState.sevenState.blockedApps,
+            blockType = nineState.eightState.blockType,
+            targetScreenTime = nineState.eightState.targetScreenTime,
             streakDays = gamification.currentStreakDays,
             totalXp = gamification.totalXp,
-            currentLevel = gamification.currentLevel
+            currentLevel = gamification.currentLevel,
+            isDeveloperModeEnabled = nineState.isDeveloperModeEnabled,
+            pretendSubscribed = nineState.pretendSubscribed,
+            bypassDowngradeWaitTime = nineState.bypassDowngradeWaitTime
         )
     }
     .stateIn(
@@ -148,11 +168,22 @@ class SettingsViewModel @Inject constructor(
     fun setPreventAppUninstall(enabled: Boolean) = launch { settingsDataStore.setPreventAppUninstall(enabled) }
     fun setBlockSettingsAccess(enabled: Boolean) = launch { settingsDataStore.setBlockSettingsAccess(enabled) }
     fun setLockDuringFocus(enabled: Boolean) = launch { settingsDataStore.setLockDuringFocus(enabled) }
+    fun setPreventDisablingFocusMode(enabled: Boolean) = launch { settingsDataStore.setPreventDisablingFocusMode(enabled) }
 
     fun setBlockType(type: String) = launch { settingsDataStore.setBlockType(type) }
     fun setDeveloperModeEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsDataStore.setDeveloperModeEnabled(enabled)
+        }
+    }
+    fun setPretendSubscribed(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.setPretendSubscribed(enabled)
+        }
+    }
+    fun setBypassDowngradeWaitTime(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.setBypassDowngradeWaitTime(enabled)
         }
     }
 
@@ -176,6 +207,7 @@ class SettingsViewModel @Inject constructor(
 
     // ── Appearance ──
     fun setAnimationsEnabled(enabled: Boolean) = launch { settingsDataStore.setAnimationsEnabled(enabled) }
+    fun setShowReelCount(enabled: Boolean) = launch { settingsDataStore.setShowReelCount(enabled) }
 
     // ── Challenges ──
     fun setRandomizeChallenges(enabled: Boolean) = launch { settingsDataStore.setRandomizeChallenges(enabled) }
@@ -225,6 +257,13 @@ private data class EightState(
     val targetScreenTime: String
 )
 
+private data class NineState(
+    val eightState: EightState,
+    val isDeveloperModeEnabled: Boolean,
+    val pretendSubscribed: Boolean,
+    val bypassDowngradeWaitTime: Boolean
+)
+
 // ── UI State ──
 data class SettingsUiState(
     val protection: ProtectionState = ProtectionState(),
@@ -238,7 +277,10 @@ data class SettingsUiState(
     val targetScreenTime: String = "2h",
     val streakDays: Int = 0,
     val totalXp: Int = 0,
-    val currentLevel: Int = 1
+    val currentLevel: Int = 1,
+    val isDeveloperModeEnabled: Boolean = false,
+    val pretendSubscribed: Boolean = false,
+    val bypassDowngradeWaitTime: Boolean = false
 )
 
 data class ProtectionState(
@@ -246,7 +288,8 @@ data class ProtectionState(
     val emergencyPassesPerDay: Int = 2,
     val preventAppUninstall: Boolean = false,
     val blockSettingsAccess: Boolean = false,
-    val lockDuringFocus: Boolean = false
+    val lockDuringFocus: Boolean = false,
+    val preventDisablingFocusMode: Boolean = false
 )
 
 data class BreakRulesState(
@@ -272,7 +315,8 @@ data class NotificationState(
 
 data class AppearanceState(
     val theme: String = "Dark",
-    val animationsEnabled: Boolean = true
+    val animationsEnabled: Boolean = true,
+    val showReelCount: Boolean = false
 )
 
 data class ChallengeState(

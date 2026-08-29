@@ -23,22 +23,42 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.flow.shift.R
 import com.flow.shift.theme.*
+
+import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
 fun SubscriptionScreen(
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    viewModel: SubscriptionViewModel = hiltViewModel()
 ) {
     var selectedPlan by remember { mutableStateOf("YEARLY") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SurfaceBlack)
-            .padding(horizontal = 20.dp, vertical = 24.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        // Back Button & Header
+    Box(modifier = Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(id = R.drawable.subscription_bg_2),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+        
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SurfaceBlack.copy(alpha = 0.5f))
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Back Button & Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -159,13 +179,15 @@ fun SubscriptionScreen(
 
         Spacer(modifier = Modifier.height(40.dp))
 
-        // Continue Button
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(PremiumGold)
-                .clickable { /* Handle subscription logic */ }
+                .clickable { 
+                    viewModel.subscribe()
+                    onNavigateBack()
+                }
                 .padding(vertical = 18.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -191,6 +213,7 @@ fun SubscriptionScreen(
         
         Spacer(modifier = Modifier.height(24.dp))
     }
+}
 }
 
 @Composable

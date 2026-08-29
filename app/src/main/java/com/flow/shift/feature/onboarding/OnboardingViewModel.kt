@@ -1,7 +1,6 @@
 package com.flow.shift.feature.onboarding
 
 import android.content.Context
-import android.content.pm.PackageManager
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +17,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,8 +74,9 @@ class OnboardingViewModel @Inject constructor(
         blockedAppDao.getAllBlockedApps(),
         _searchQuery
     ) { installed, saved, query ->
+        val savedByPackage = saved.associateBy { it.packageName }
         val mapped = installed.map { app ->
-            val savedApp = saved.find { it.packageName == app.packageName }
+            val savedApp = savedByPackage[app.packageName]
             app.copy(isBlocked = savedApp?.isEnabled ?: false)
         }
         val comparator = compareByDescending<OnboardingAppItem> { it.isBlocked }
@@ -88,7 +90,28 @@ class OnboardingViewModel @Inject constructor(
                 it.appName.contains(query, ignoreCase = true) || it.packageName.contains(query, ignoreCase = true)
             }.sortedWith(comparator)
         }
-    }.stateIn(
+    }.flowOn(Dispatchers.Default)
+    .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val topAppsList: StateFlow<List<OnboardingAppItem>> = appList.map { apps ->
+        if (_searchQuery.value.isNotBlank()) emptyList()
+        else apps.filter { it.isBlocked || AppSortingHelper.isSocialOrTopApp(it.packageName, it.appName) }
+    }.flowOn(Dispatchers.Default)
+    .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val otherAppsList: StateFlow<List<OnboardingAppItem>> = appList.map { apps ->
+        if (_searchQuery.value.isNotBlank()) emptyList()
+        else apps.filter { !it.isBlocked && !AppSortingHelper.isSocialOrTopApp(it.packageName, it.appName) }
+    }.flowOn(Dispatchers.Default)
+    .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
@@ -113,7 +136,7 @@ class OnboardingViewModel @Inject constructor(
     private fun loadInstalledApps() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
-            val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            val packages = pm.getInstalledApplications(0)
 
             val apps = packages.filter {
                 pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != context.packageName

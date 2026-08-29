@@ -1,8 +1,6 @@
 package com.flow.shift.feature.appselection
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flow.shift.core.AppSortingHelper
@@ -35,8 +33,9 @@ class AppSelectionViewModel @Inject constructor(
         _installedApps,
         blockedAppDao.getAllBlockedApps()
     ) { installed, saved ->
+        val savedByPackage = saved.associateBy { it.packageName }
         installed.map { app ->
-            val savedApp = saved.find { it.packageName == app.packageName }
+            val savedApp = savedByPackage[app.packageName]
             app.copy(isBlocked = savedApp?.isEnabled ?: false)
         }.sortedWith(
             compareByDescending<AppItem> { it.isBlocked }
@@ -56,7 +55,7 @@ class AppSelectionViewModel @Inject constructor(
     private fun loadInstalledApps() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
-            val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            val packages = pm.getInstalledApplications(0)
             
             val apps = packages.filter { 
                 // Show launchable apps (includes pre-installed user apps like YouTube/Chrome)

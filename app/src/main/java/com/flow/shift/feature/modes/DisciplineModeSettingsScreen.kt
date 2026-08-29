@@ -1,5 +1,9 @@
 package com.flow.shift.feature.modes
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,29 +24,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.flow.shift.theme.SurfaceBlack
 import com.flow.shift.theme.TextPrimary
 import com.flow.shift.theme.TextSecondary
 import com.flow.shift.theme.ModeStrictAccent
+import com.flow.shift.theme.PremiumGold
 import kotlin.math.roundToInt
 
 @Composable
 fun DisciplineModeSettingsScreen(
     viewModel: DisciplineModeSettingsViewModel = hiltViewModel(),
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToSubscription: () -> Unit
 ) {
+    val isPremium by viewModel.isPremium.collectAsStateWithLifecycle()
     val challengeType by viewModel.strictChallengeType.collectAsStateWithLifecycle()
     val challengeAmount by viewModel.strictChallengeAmount.collectAsStateWithLifecycle()
     val breakDuration by viewModel.breakDurationMinutes.collectAsStateWithLifecycle()
 
     val typeOptions = listOf(
+        "MATH" to "Maths",
+        "ADVANCED_MATH" to "Advanced Maths",
         "PUSHUPS" to "Push-ups",
-        "MATH" to "Math Problems"
+        "SQUATS" to "Squats",
+        "CHARGE_PHONE" to "Charge Your Phone"
     )
 
 
@@ -97,7 +110,17 @@ fun DisciplineModeSettingsScreen(
         )
 
         var expanded by remember { mutableStateOf(false) }
-        val selectedOptionText = typeOptions.find { it.first == challengeType }?.second ?: "Push-ups"
+        val selectedOptionText = typeOptions.find { it.first == challengeType }?.second ?: "Maths"
+
+        val context = LocalContext.current
+        val cameraLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission(),
+            onResult = { granted ->
+                if (granted) {
+                    viewModel.setStrictChallengeType("PUSHUPS")
+                }
+            }
+        )
 
         Box(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -129,9 +152,32 @@ fun DisciplineModeSettingsScreen(
             ) {
                 typeOptions.forEach { (type, label) ->
                     DropdownMenuItem(
-                        text = { Text(label, color = TextPrimary) },
+                        text = { 
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(label, color = TextPrimary)
+                                if (type != "MATH" && type != "PUSHUPS" && !isPremium) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.WorkspacePremium,
+                                        contentDescription = "Premium",
+                                        tint = PremiumGold,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        },
                         onClick = {
-                            viewModel.setStrictChallengeType(type)
+                            if (type != "MATH" && type != "PUSHUPS" && !isPremium) {
+                                onNavigateToSubscription()
+                            } else if (type == "PUSHUPS") {
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.setStrictChallengeType(type)
+                                } else {
+                                    cameraLauncher.launch(Manifest.permission.CAMERA)
+                                }
+                            } else {
+                                viewModel.setStrictChallengeType(type)
+                            }
                             expanded = false
                         }
                     )

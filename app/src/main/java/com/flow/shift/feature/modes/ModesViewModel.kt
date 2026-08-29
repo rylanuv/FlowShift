@@ -21,13 +21,21 @@ class ModesViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
+    val isPremium: StateFlow<Boolean> = settingsDataStore.isPremium
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
     val uiState: StateFlow<ModesUiState> = combine(
         settingsDataStore.blockingMode,
         settingsDataStore.lastDowngradeTimeMillis,
         settingsDataStore.strictChallengeType,
         settingsDataStore.downgradeRequestTimeMillis,
         settingsDataStore.downgradeRequestTarget,
-        settingsDataStore.autoDowngradeAtMidnight
+        settingsDataStore.autoDowngradeAtMidnight,
+        settingsDataStore.bypassDowngradeWaitTime
     ) { args ->
         ModesUiState(
             currentMode = BlockingMode.fromString(args[0] as String),
@@ -35,7 +43,8 @@ class ModesViewModel @Inject constructor(
             strictChallengeType = args[2] as String,
             downgradeRequestTimeMillis = args[3] as Long,
             downgradeRequestTarget = args[4] as String?,
-            autoDowngradeAtMidnight = args[5] as Boolean
+            autoDowngradeAtMidnight = args[5] as Boolean,
+            bypassDowngradeWaitTime = args[6] as Boolean
         )
     }.stateIn(
         scope = viewModelScope,
@@ -75,7 +84,9 @@ class ModesViewModel @Inject constructor(
 
             val waitSeconds = 6 * 60 * 60 // 6 hours
             
-            if (validRequest && requestTarget == newMode.name) {
+            if (uiState.value.bypassDowngradeWaitTime) {
+                _downgradeWaitRemainingSeconds.value = 0
+            } else if (validRequest && requestTarget == newMode.name) {
                 val elapsed = (now - requestTime) / 1000
                 val remaining = waitSeconds - elapsed.toInt()
                 _downgradeWaitRemainingSeconds.value = if (remaining > 0) remaining else 0
@@ -117,6 +128,11 @@ class ModesViewModel @Inject constructor(
             if (pending.targetMode.isDowngradeFrom(currentMode)) {
                 if (downgradeWaitRemainingSeconds.value > 0) {
                     if (uiState.value.autoDowngradeAtMidnight) {
+                        settingsDataStore.setDowngradeRequestTarget(pending.targetMode.name)
+                        if (pending.targetMode == BlockingMode.STRICT) {
+                            settingsDataStore.setStrictChallengeType(_pendingStrictChallengeType.value)
+                        }
+                        settingsDataStore.setLastAutoDowngradeTime(System.currentTimeMillis())
                         _pendingModeChange.value = null
                         return@launch
                     }
@@ -156,7 +172,8 @@ data class ModesUiState(
     val strictChallengeType: String = "PUSHUPS",
     val downgradeRequestTimeMillis: Long = 0L,
     val downgradeRequestTarget: String? = null,
-    val autoDowngradeAtMidnight: Boolean = false
+    val autoDowngradeAtMidnight: Boolean = false,
+    val bypassDowngradeWaitTime: Boolean = false
 )
 
 data class PendingModeChange(

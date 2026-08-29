@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,13 +41,20 @@ class SettingsDataStore @Inject constructor(
 
         // Developer Mode
         val IS_DEVELOPER_MODE_ENABLED = booleanPreferencesKey("is_developer_mode_enabled")
+        val PRETEND_SUBSCRIBED = booleanPreferencesKey("pretend_subscribed")
+        val BYPASS_DOWNGRADE_WAIT_TIME = booleanPreferencesKey("bypass_downgrade_wait_time")
+
+        // Premium
+        val IS_PREMIUM = booleanPreferencesKey("is_premium")
 
         // Protection
         val STRICT_MODE_ON = booleanPreferencesKey("strict_mode_on")
         val EMERGENCY_PASSES_PER_DAY = intPreferencesKey("emergency_passes_per_day")
         val PREVENT_APP_UNINSTALL = booleanPreferencesKey("prevent_app_uninstall")
         val BLOCK_SETTINGS_ACCESS = booleanPreferencesKey("block_settings_access")
+        val SETTINGS_UNLOCK_INITIATED_AT = longPreferencesKey("settings_unlock_initiated_at")
         val LOCK_DURING_FOCUS = booleanPreferencesKey("lock_during_focus")
+        val PREVENT_DISABLING_FOCUS_MODE = booleanPreferencesKey("prevent_disabling_focus_mode")
 
         // Break Rules
         val BREAKS_PER_DAY = intPreferencesKey("breaks_per_day")
@@ -68,6 +76,7 @@ class SettingsDataStore @Inject constructor(
         // Appearance
         val THEME = stringPreferencesKey("theme")
         val ANIMATIONS_ENABLED = booleanPreferencesKey("animations_enabled")
+        val SHOW_REEL_COUNT = booleanPreferencesKey("show_reel_count")
 
         // Challenges
         val CHALLENGE_DIFFICULTY = stringPreferencesKey("challenge_difficulty")
@@ -76,6 +85,10 @@ class SettingsDataStore @Inject constructor(
         val TARGET_SCREEN_TIME = stringPreferencesKey("target_screen_time")
         val EASY_MODE_WAIT_SECONDS = intPreferencesKey("easy_mode_wait_seconds")
         val FOCUS_MODE_UNTIL_MILLIS = longPreferencesKey("focus_mode_until_millis")
+
+        // Usage Tracking Fix
+        val HIGHEST_USAGE_SEEN_TODAY_MILLIS = longPreferencesKey("highest_usage_seen_today_millis")
+        val HIGHEST_USAGE_SEEN_DATE_MILLIS = longPreferencesKey("highest_usage_seen_date_millis")
     }
 
     // ── Existing Flows ──
@@ -96,7 +109,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     val strictChallengeType: Flow<String> = dataStore.data.map { preferences ->
-        preferences[STRICT_CHALLENGE_TYPE] ?: "PUSHUPS"
+        preferences[STRICT_CHALLENGE_TYPE] ?: "MATH"
     }
 
     val strictChallengeAmount: Flow<Int> = dataStore.data.map { preferences ->
@@ -131,12 +144,29 @@ class SettingsDataStore @Inject constructor(
         preferences[IS_DEVELOPER_MODE_ENABLED] ?: false
     }
 
+    val pretendSubscribed: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PRETEND_SUBSCRIBED] ?: false
+    }
+
+    val bypassDowngradeWaitTime: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[BYPASS_DOWNGRADE_WAIT_TIME] ?: false
+    }
+
+    // ── Premium Flows ──
+    val isPremium: Flow<Boolean> = dataStore.data.map { preferences ->
+        val actual = preferences[IS_PREMIUM] ?: false
+        val pretend = preferences[PRETEND_SUBSCRIBED] ?: false
+        actual || pretend
+    }
+
     // ── Protection Flows ──
     val strictModeOn: Flow<Boolean> = dataStore.data.map { it[STRICT_MODE_ON] ?: true }
     val emergencyPassesPerDay: Flow<Int> = dataStore.data.map { it[EMERGENCY_PASSES_PER_DAY] ?: 2 }
     val preventAppUninstall: Flow<Boolean> = dataStore.data.map { it[PREVENT_APP_UNINSTALL] ?: false }
     val blockSettingsAccess: Flow<Boolean> = dataStore.data.map { it[BLOCK_SETTINGS_ACCESS] ?: false }
+    val settingsUnlockInitiatedAt: Flow<Long> = dataStore.data.map { it[SETTINGS_UNLOCK_INITIATED_AT] ?: 0L }
     val lockDuringFocus: Flow<Boolean> = dataStore.data.map { it[LOCK_DURING_FOCUS] ?: false }
+    val preventDisablingFocusMode: Flow<Boolean> = dataStore.data.map { it[PREVENT_DISABLING_FOCUS_MODE] ?: false }
 
     // ── Break Rules Flows ──
     val breaksPerDay: Flow<Int> = dataStore.data.map { it[BREAKS_PER_DAY] ?: 3 }
@@ -158,6 +188,7 @@ class SettingsDataStore @Inject constructor(
     // ── Appearance Flows ──
     val theme: Flow<String> = dataStore.data.map { it[THEME] ?: "Dark" }
     val animationsEnabled: Flow<Boolean> = dataStore.data.map { it[ANIMATIONS_ENABLED] ?: true }
+    val showReelCount: Flow<Boolean> = dataStore.data.map { it[SHOW_REEL_COUNT] ?: false }
 
     // ── Challenge Flows ──
     val challengeDifficulty: Flow<String> = dataStore.data.map { it[CHALLENGE_DIFFICULTY] ?: "Medium" }
@@ -249,12 +280,40 @@ class SettingsDataStore @Inject constructor(
         }
     }
 
+    suspend fun setPretendSubscribed(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PRETEND_SUBSCRIBED] = enabled
+        }
+    }
+
+    suspend fun setBypassDowngradeWaitTime(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BYPASS_DOWNGRADE_WAIT_TIME] = enabled
+        }
+    }
+
+    // ── Premium Setters ──
+    suspend fun setIsPremium(isPremium: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[IS_PREMIUM] = isPremium
+        }
+    }
+
     // ── Protection Setters ──
     suspend fun setStrictModeOn(enabled: Boolean) { dataStore.edit { it[STRICT_MODE_ON] = enabled } }
     suspend fun setEmergencyPassesPerDay(count: Int) { dataStore.edit { it[EMERGENCY_PASSES_PER_DAY] = count } }
     suspend fun setPreventAppUninstall(enabled: Boolean) { dataStore.edit { it[PREVENT_APP_UNINSTALL] = enabled } }
-    suspend fun setBlockSettingsAccess(enabled: Boolean) { dataStore.edit { it[BLOCK_SETTINGS_ACCESS] = enabled } }
+    suspend fun setBlockSettingsAccess(enabled: Boolean) {
+        dataStore.edit {
+            it[BLOCK_SETTINGS_ACCESS] = enabled
+            if (enabled) {
+                it[SETTINGS_UNLOCK_INITIATED_AT] = 0L
+            }
+        }
+    }
+    suspend fun setSettingsUnlockInitiatedAt(timeMillis: Long) { dataStore.edit { it[SETTINGS_UNLOCK_INITIATED_AT] = timeMillis } }
     suspend fun setLockDuringFocus(enabled: Boolean) { dataStore.edit { it[LOCK_DURING_FOCUS] = enabled } }
+    suspend fun setPreventDisablingFocusMode(enabled: Boolean) { dataStore.edit { it[PREVENT_DISABLING_FOCUS_MODE] = enabled } }
 
     // ── Break Rules Setters ──
     suspend fun setBreaksPerDay(count: Int) { dataStore.edit { it[BREAKS_PER_DAY] = count } }
@@ -276,6 +335,7 @@ class SettingsDataStore @Inject constructor(
     // ── Appearance Setters ──
     suspend fun setTheme(theme: String) { dataStore.edit { it[THEME] = theme } }
     suspend fun setAnimationsEnabled(enabled: Boolean) { dataStore.edit { it[ANIMATIONS_ENABLED] = enabled } }
+    suspend fun setShowReelCount(enabled: Boolean) { dataStore.edit { it[SHOW_REEL_COUNT] = enabled } }
 
     // ── Challenge Setters ──
     suspend fun setChallengeDifficulty(difficulty: String) { dataStore.edit { it[CHALLENGE_DIFFICULTY] = difficulty } }
@@ -290,5 +350,29 @@ class SettingsDataStore @Inject constructor(
     // ── Focus Mode ──
     val focusModeUntilMillis: Flow<Long> = dataStore.data.map { it[FOCUS_MODE_UNTIL_MILLIS] ?: 0L }
     suspend fun setFocusModeUntilMillis(timeMillis: Long) { dataStore.edit { it[FOCUS_MODE_UNTIL_MILLIS] = timeMillis } }
+
+    // ── Usage Tracking Fix ──
+    suspend fun getHighestUsageSeenToday(startOfDayMillis: Long): Long {
+        val prefs = dataStore.data.first()
+        val savedDate = prefs[HIGHEST_USAGE_SEEN_DATE_MILLIS] ?: 0L
+        if (savedDate != startOfDayMillis) {
+            return 0L
+        }
+        return prefs[HIGHEST_USAGE_SEEN_TODAY_MILLIS] ?: 0L
+    }
+
+    suspend fun updateHighestUsageSeenToday(startOfDayMillis: Long, currentUsageMillis: Long): Long {
+        var updatedUsage = currentUsageMillis
+        dataStore.edit { prefs ->
+            val savedDate = prefs[HIGHEST_USAGE_SEEN_DATE_MILLIS] ?: 0L
+            val savedUsage = prefs[HIGHEST_USAGE_SEEN_TODAY_MILLIS] ?: 0L
+            if (savedDate == startOfDayMillis) {
+                updatedUsage = maxOf(currentUsageMillis, savedUsage)
+            }
+            prefs[HIGHEST_USAGE_SEEN_DATE_MILLIS] = startOfDayMillis
+            prefs[HIGHEST_USAGE_SEEN_TODAY_MILLIS] = updatedUsage
+        }
+        return updatedUsage
+    }
 }
 

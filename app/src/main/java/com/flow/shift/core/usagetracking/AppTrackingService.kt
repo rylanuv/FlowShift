@@ -48,15 +48,31 @@ class AppTrackingService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
     private var lastInterventionPackage: String? = null
     private var lastInterventionAtMillis: Long = 0L
+    private var lastCheckedPackage: String? = null
+    private var lastCheckedAtMillis: Long = 0L
+    private var cachedTargetPackages: Set<String> = emptySet()
+    private var cachedTargetReached = false
+    private var cachedTargetCheckedAtMillis: Long = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return START_STICKY
+    }
+
+
+
     override fun onCreate() {
         super.onCreate()
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, createNotification())
+        isRunning = true
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIFICATION_ID, createNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, createNotification())
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AppTracking", "Failed to start foreground service", e)
         }
         startTracking()
         startAutoDowngradeCheck()
@@ -85,10 +101,14 @@ class AppTrackingService : Service() {
                             }
 
                             if (shouldDowngrade) {
-                                android.util.Log.d("AppTracking", "Auto downgrading to EASY at midnight")
-                                settingsDataStore.setBlockingMode(BlockingMode.EASY.name)
+                                val targetModeStr = settingsDataStore.downgradeRequestTarget.first()
+                                val targetMode = targetModeStr?.let { BlockingMode.fromString(it) } ?: BlockingMode.EASY
+                                android.util.Log.d("AppTracking", "Auto downgrading to $targetMode at midnight")
+                                settingsDataStore.setBlockingMode(targetMode.name)
                                 settingsDataStore.setLastDowngradeTime(now)
                                 settingsDataStore.setLastAutoDowngradeTime(now)
+                                settingsDataStore.setAutoDowngradeAtMidnight(false)
+                                settingsDataStore.setDowngradeRequestTarget(null)
                             }
                         }
                     }
@@ -101,54 +121,57 @@ class AppTrackingService : Service() {
     }
 
     private fun startTracking() {
-        android.util.Log.d("AppTracking", "startTracking loop initiated")
         serviceScope.launch {
             while (true) {
                 try {
                     val foregroundApp = usageTracker.getForegroundApp()
-                    android.util.Log.d("AppTracking", "Polled foreground app: $foregroundApp")
+                    val now = System.currentTimeMillis()
 
-                    if (foregroundApp != null && foregroundApp != packageName) {
+                    if (
+                        foregroundApp != null &&
+                        foregroundApp != packageName &&
+                        shouldEvaluateForegroundApp(foregroundApp, now)
+                    ) {
                         checkIfAppIsBlocked(foregroundApp)
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("AppTracking", "Error in tracking loop", e)
                 }
 
-                delay(500) // Poll every 500ms for fast detection
+                delay(TRACKING_POLL_INTERVAL_MILLIS)
             }
         }
     }
 
+    private fun shouldEvaluateForegroundApp(packageName: String, nowMillis: Long): Boolean {
+        if (
+            lastCheckedPackage == packageName &&
+            nowMillis - lastCheckedAtMillis < SAME_APP_RECHECK_INTERVAL_MILLIS
+        ) {
+            return false
+        }
+
+        lastCheckedPackage = packageName
+        lastCheckedAtMillis = nowMillis
+        return true
+    }
+
     private suspend fun checkIfAppIsBlocked(packageName: String) {
-        android.util.Log.d("AppTracking", "Checking if blocked: $packageName")
         val blockedApp = blockedAppDao.getBlockedApp(packageName)
         if (blockedApp != null && blockedApp.isEnabled) {
-            android.util.Log.d("AppTracking", "$packageName is in blocked apps list")
-            val blockedApps = blockedAppDao.getEnabledBlockedApps().first()
             val focusModeUntilMillis = settingsDataStore.focusModeUntilMillis.first()
             val currentTime = System.currentTimeMillis()
             val isFocusModeActive = focusModeUntilMillis > currentTime
 
-            if (!isFocusModeActive && !isTargetTimeReached(blockedApps)) {
-                android.util.Log.d("AppTracking", "Target time NOT reached and Focus Mode NOT active. Returning.")
+            if (!isFocusModeActive && !isTargetTimeReached(currentTime)) {
                 return
             }
-            android.util.Log.d("AppTracking", "Target time reached or Focus Mode Active!")
 
             val blockingMode = BlockingMode.fromString(settingsDataStore.blockingMode.first())
-            val recentSessions = workoutSessionDao.getAllSessions().first()
-            val latestSessionForApp = recentSessions.find { it.targetAppPackage == packageName }
-            val latestGlobalSession = recentSessions.find { it.targetAppPackage == "ALL_APPS" }
-
             val hasActiveTimeBank = !isFocusModeActive && blockingMode != BlockingMode.HARDCORE &&
-                ((latestSessionForApp != null && latestSessionForApp.timeUnlockedMillis > currentTime) ||
-                    (latestGlobalSession != null && latestGlobalSession.timeUnlockedMillis > currentTime))
-            android.util.Log.d("AppTracking", "hasActiveTimeBank: $hasActiveTimeBank, focusModeActive: $isFocusModeActive")
+                workoutSessionDao.getActiveUnlockCount(packageName, currentTime) > 0
 
             if (!hasActiveTimeBank) {
-                android.util.Log.d("AppTracking", "Triggering blocker for $packageName!")
-
                 val challengeType = settingsDataStore.strictChallengeType.first()
                 val challengeAmount = blockedApp.customDifficulty ?: settingsDataStore.strictChallengeAmount.first()
                 val breakDurationMinutes = settingsDataStore.breakDurationMinutes.first()
@@ -201,23 +224,26 @@ class AppTrackingService : Service() {
                     } else {
                         pendingIntent.send()
                     }
-                    android.util.Log.d("AppTracking", "startActivity executed successfully")
-                    // Brief pause after launching blocker to avoid spamming intents
-                    delay(1000)
+                    delay(BLOCKER_LAUNCH_SETTLE_MILLIS)
                 } catch (e: Exception) {
                     android.util.Log.e("AppTracking", "Failed to start activity", e)
                 }
             }
-        } else {
-            android.util.Log.d("AppTracking", "$packageName is NOT in blocked apps list or disabled")
         }
     }
 
-    private suspend fun isTargetTimeReached(blockedApps: List<com.flow.shift.core.database.BlockedAppEntity>): Boolean {
+    private suspend fun isTargetTimeReached(now: Long): Boolean {
+        val blockedApps = blockedAppDao.getEnabledBlockedApps().first()
+        val protectedPackages = blockedApps.map { it.packageName }.toSet()
+        if (
+            cachedTargetPackages == protectedPackages &&
+            now - cachedTargetCheckedAtMillis < TARGET_RECHECK_INTERVAL_MILLIS
+        ) {
+            return cachedTargetReached
+        }
+
         val targetScreenTimeStr = settingsDataStore.targetScreenTime.first()
         val targetMillis = com.flow.shift.feature.dashboard.parseTargetScreenTimeMillis(targetScreenTimeStr)
-        
-        val now = System.currentTimeMillis()
         val startOfDay = java.util.Calendar.getInstance().apply {
             timeInMillis = now
             set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -226,11 +252,18 @@ class AppTrackingService : Service() {
             set(java.util.Calendar.MILLISECOND, 0)
         }.timeInMillis
 
-        val protectedPackages = blockedApps.map { it.packageName }.toSet()
         val usageByPackage = usageTracker.getUsageMillisByPackage(startOfDay, now, protectedPackages)
-        val totalUsageTodayMillis = usageByPackage.values.sum()
+        var totalUsageTodayMillis = usageByPackage.values.sum()
         
-        return totalUsageTodayMillis >= targetMillis
+        // Fix for UsageStatsManager lag when RAM is cleared:
+        // Always persist and retrieve the highest seen usage for today.
+        totalUsageTodayMillis = settingsDataStore.updateHighestUsageSeenToday(startOfDay, totalUsageTodayMillis)
+
+        cachedTargetPackages = protectedPackages
+        cachedTargetReached = totalUsageTodayMillis >= targetMillis
+        cachedTargetCheckedAtMillis = now
+
+        return cachedTargetReached
     }
 
     private fun isDuplicateIntervention(packageName: String, nowMillis: Long): Boolean {
@@ -258,12 +291,20 @@ class AppTrackingService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        isRunning = false
         serviceJob.cancel()
     }
 
     companion object {
+        var isRunning = false
+            private set
+
         private const val NOTIFICATION_ID = 1001
         private const val DUPLICATE_INTERVENTION_WINDOW_MILLIS = 10_000L
+        private const val TRACKING_POLL_INTERVAL_MILLIS = 2_000L
+        private const val SAME_APP_RECHECK_INTERVAL_MILLIS = 5_000L
+        private const val TARGET_RECHECK_INTERVAL_MILLIS = 15_000L
+        private const val BLOCKER_LAUNCH_SETTLE_MILLIS = 1_000L
     }
 }
 

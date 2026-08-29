@@ -5,6 +5,7 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.hilt)
   alias(libs.plugins.ksp)
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -14,14 +15,18 @@ android {
         applicationId = "com.flow.shift"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
+        versionCode = 3
         versionName = "1.0"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
     }
     compileOptions {
@@ -117,4 +122,11 @@ dependencies {
 
   // Google Fonts
   implementation(libs.compose.ui.text.google.fonts)
+
+  // Firebase
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.analytics)
+  
+  // Coil
+  implementation(libs.coil.compose)
 }

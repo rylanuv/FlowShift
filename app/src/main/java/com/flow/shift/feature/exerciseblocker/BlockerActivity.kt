@@ -26,9 +26,21 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.flow.shift.core.cameravision.CameraScreen
 import com.flow.shift.theme.FlowShiftTheme
+import android.content.Context
+import android.content.pm.PackageManager
 import com.flow.shift.theme.*
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
+
+fun getAppLabel(context: Context, packageName: String): String {
+    if (packageName == "ALL_APPS") return "all apps"
+    return try {
+        val pm = context.packageManager
+        pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+    } catch (e: PackageManager.NameNotFoundException) {
+        packageName
+    }
+}
 
 @AndroidEntryPoint
 class BlockerActivity : ComponentActivity() {
@@ -147,7 +159,14 @@ fun BlockerIntroScreen(
     onStartExercise: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val challengeName = if (challengeType == "MATH") "math problems" else "push-ups"
+    val context = LocalContext.current
+    val challengeName = when (challengeType) {
+        "MATH" -> "math problems"
+        "ADVANCED_MATH" -> "advanced math problems"
+        "SQUATS" -> "squats"
+        "CHARGE_PHONE" -> "phone charge"
+        else -> "push-ups"
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -176,9 +195,9 @@ fun BlockerIntroScreen(
                 modifier = Modifier.padding(bottom = 32.dp)
             )
 
-            val appDisplayName = if (targetApp == "ALL_APPS") "all apps" else targetApp
+            val appDisplayName = getAppLabel(context, targetApp)
             Text(
-                text = "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by completing $requiredAmount $challengeName.",
+                text = if (challengeType == "CHARGE_PHONE") "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by charging your phone." else "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by completing $requiredAmount $challengeName.",
                 color = TextSecondary,
                 fontSize = 18.sp,
                 fontFamily = AppFontFamily,
@@ -195,7 +214,12 @@ fun BlockerIntroScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Amber500)
             ) {
                 Text(
-                    text = if (challengeType == "MATH") "Start $requiredAmount Problems" else "Start $requiredAmount Push-ups",
+                    text = when (challengeType) {
+                        "MATH", "ADVANCED_MATH" -> "Start $requiredAmount Problems"
+                        "SQUATS" -> "Start $requiredAmount Squats"
+                        "CHARGE_PHONE" -> "Start Charging Phone"
+                        else -> "Start $requiredAmount Push-ups"
+                    },
                     color = Color.Black,
                     fontSize = 18.sp,
                     fontFamily = AppFontFamily,
@@ -225,6 +249,7 @@ fun BlockerSuccessScreen(
     challengeType: String,
     onFinish: () -> Unit
 ) {
+    val context = LocalContext.current
     LaunchedEffect(Unit) {
         delay(2000) // Show celebration for 2 seconds
         onFinish()
@@ -258,7 +283,7 @@ fun BlockerSuccessScreen(
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            val appDisplayName = if (targetApp == "ALL_APPS") "all apps" else targetApp
+            val appDisplayName = getAppLabel(context, targetApp)
             Text(
                 text = "Unlocking $appDisplayName...",
                 color = TextSecondary,
@@ -354,6 +379,8 @@ fun HardcoreLockedScreen(
     targetApp: String,
     onCloseApp: () -> Unit
 ) {
+    val context = LocalContext.current
+    val appDisplayName = getAppLabel(context, targetApp)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -382,7 +409,7 @@ fun HardcoreLockedScreen(
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = if (targetApp == "ALL_APPS") "All apps are blocked for the rest of today." else "$targetApp is blocked for the rest of today.",
+                text = if (targetApp == "ALL_APPS") "All apps are blocked for the rest of today." else "$appDisplayName is blocked for the rest of today.",
                 color = TextSecondary,
                 fontSize = 17.sp,
                 fontFamily = AppFontFamily,

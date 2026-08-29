@@ -98,7 +98,7 @@ fun CameraScreen(
                     ResolutionSelector.Builder()
                         .setResolutionStrategy(
                             ResolutionStrategy(
-                                Size(640, 480),
+                                Size(480, 360),
                                 ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
                             )
                         )

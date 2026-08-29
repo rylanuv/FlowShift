@@ -15,11 +15,18 @@ class DisciplineModeSettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
+    val isPremium: StateFlow<Boolean> = settingsDataStore.isPremium
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
     val strictChallengeType: StateFlow<String> = settingsDataStore.strictChallengeType
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = "PUSHUPS"
+            initialValue = "MATH"
         )
 
     val strictChallengeAmount: StateFlow<Int> = settingsDataStore.strictChallengeAmount

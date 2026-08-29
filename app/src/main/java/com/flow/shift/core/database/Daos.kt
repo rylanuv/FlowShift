@@ -31,6 +31,12 @@ interface WorkoutSessionDao {
     @Query("SELECT * FROM workout_sessions ORDER BY timestamp DESC")
     fun getAllSessions(): Flow<List<WorkoutSessionEntity>>
 
+    @Query("SELECT * FROM workout_sessions WHERE targetAppPackage = :targetPackage ORDER BY timeUnlockedMillis DESC LIMIT 1")
+    fun getLatestSessionForPackage(targetPackage: String): WorkoutSessionEntity?
+
+    @Query("SELECT COUNT(*) FROM workout_sessions WHERE (targetAppPackage = :packageName OR targetAppPackage = 'ALL_APPS') AND timeUnlockedMillis > :nowMillis")
+    fun getActiveUnlockCount(packageName: String, nowMillis: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertSession(session: WorkoutSessionEntity)
 }

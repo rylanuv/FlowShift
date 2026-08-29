@@ -159,6 +159,7 @@
         </p>
         <ul>
             <li><strong>App Usage Data:</strong> The App uses the Package Usage Stats permission to monitor which apps you are using and for how long. This data is strictly used to enforce the time limits and blocks you have configured. It is processed in real-time and stored locally.</li>
+            <li><strong>Accessibility & Scroll Data:</strong> The App uses the Accessibility Service API to monitor screen scroll events in real-time. This is used to detect endless scrolling in distracting apps. This data is analyzed live in memory and is <strong>never saved, recorded, or transmitted.</strong></li>
             <li><strong>App Settings & Limits:</strong> Your configured screen time limits, blocked app lists, and preferences are stored securely on your device.</li>
             <li><strong>Camera Data:</strong> During exercise challenges, the App uses your camera to track your movements. These camera frames are processed in real-time in the device's memory and are <strong>never saved, recorded, or transmitted.</strong></li>
         </ul>
@@ -177,36 +178,49 @@
             <li>All machine learning processing happens <strong>entirely on your device</strong>, without connecting to external servers.</li>
         </ul>
 
-        <h2>5. Permissions Explained</h2>
-        <p>The App requests the following Android permissions, all of which are strictly required for its core app-blocking and exercise features:</p>
+        <h2>5. Accessibility Service API Usage</h2>
+        <p>
+            FlowShift uses the <strong>Accessibility Service API</strong> to provide its core features, specifically to detect when you are endlessly scrolling in distracting apps and to apply blocks.
+        </p>
+        <ul>
+            <li><strong>Why we need it:</strong> The Accessibility Service is used to monitor screen content and scroll events in real-time to detect scrolling behavior in the apps you have chosen to block.</li>
+            <li><strong>What we do NOT do:</strong> We do <strong>not</strong> use the Accessibility Service to collect, store, or transmit your personal data, passwords, messages, or screen content. All processing is done locally on your device in real-time and is discarded immediately after analysis.</li>
+        </ul>
+
+        <h2>6. Other Permissions Explained</h2>
+        <p>In addition to the Accessibility Service, the App requests the following Android permissions, all of which are strictly required for its core app-blocking and exercise features:</p>
         <ul>
             <li><strong>Usage Access (PACKAGE_USAGE_STATS):</strong> Required to monitor which apps are currently running so the App can enforce your time limits and block distracting apps.</li>
             <li><strong>Display Over Other Apps (SYSTEM_ALERT_WINDOW):</strong> Required to draw the blocking screen over distracting apps when your set time limits are reached or an exercise challenge is triggered.</li>
             <li><strong>Camera:</strong> Required for the exercise tracking challenges to verify your physical movements using on-device vision models.</li>
             <li><strong>Foreground Service:</strong> Required to keep the time-tracking service running reliably in the background so your app limits are accurately enforced even when FlowShift is closed.</li>
+            <li><strong>Query All Packages (QUERY_ALL_PACKAGES):</strong> Required to read the list of installed apps on your device so you can choose which ones to block. This list is never transmitted off your device.</li>
+            <li><strong>Device Administrator (BIND_DEVICE_ADMIN):</strong> Used as an optional strict mode feature to prevent you from easily uninstalling the app while a focus session is active.</li>
+            <li><strong>Notifications (POST_NOTIFICATIONS):</strong> Required to display ongoing service statuses and alert you when limits are reached.</li>
+            <li><strong>Advertising ID (AD_ID):</strong> This permission is included by underlying system dependencies. However, we do not show advertisements, nor do we track or use this identifier for advertising purposes.</li>
         </ul>
 
-        <h2>6. Third-Party Services</h2>
+        <h2>7. Third-Party Services</h2>
         <p>
             The App utilizes <strong>Google MediaPipe Tasks Vision</strong> for on-device pose detection and movement tracking during exercise challenges. This machine learning library processes data <strong>entirely locally on your device</strong> and does not send any camera feeds, images, or telemetry to Google or any external servers. 
         </p>
 
-        <h2>7. Data Sharing</h2>
+        <h2>8. Data Sharing</h2>
         <p>
             Because the App operates 100% offline and lacks internet access permissions, we do <strong>not share, sell, or transmit</strong> any of your data to third parties, analytics providers, or advertising networks.
         </p>
 
-        <h2>8. Children's Privacy</h2>
+        <h2>9. Children's Privacy</h2>
         <p>
             The App does not knowingly collect any personal information from anyone, including children under the age of 13. Since the App operates entirely offline and collects no personal data whatsoever, it is safe for users of all ages.
         </p>
 
-        <h2>9. Data Security</h2>
+        <h2>10. Data Security</h2>
         <p>
             All data generated by the App is stored locally on your device using Android's built-in secure storage mechanisms. Because the data never leaves your device, its security is guaranteed by your device's operating system and screen lock protections.
         </p>
 
-        <h2>10. Data Retention and Deletion</h2>
+        <h2>11. Data Retention and Deletion</h2>
         <p>
             All App data is stored locally on your device. You can delete all data at any time by:
         </p>
@@ -215,12 +229,12 @@
             <li>Uninstalling the App, which automatically removes all associated data.</li>
         </ul>
 
-        <h2>11. Changes to This Privacy Policy</h2>
+        <h2>12. Changes to This Privacy Policy</h2>
         <p>
             We may update this Privacy Policy from time to time to reflect changes in our practices or app features. Any changes will be reflected on this page with an updated "Effective Date."
         </p>
 
-        <h2>12. Contact Us</h2>
+        <h2>13. Contact Us</h2>
         <p>
             If you have any questions or concerns about this Privacy Policy or the App's data practices, please contact us at:
         </p>

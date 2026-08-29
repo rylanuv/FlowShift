@@ -35,7 +35,7 @@ class DashboardViewModel @Inject constructor(
     blockedAppDao: BlockedAppDao,
     workoutSessionDao: WorkoutSessionDao,
     interventionDao: InterventionDao,
-    settingsDataStore: SettingsDataStore,
+    private val settingsDataStore: SettingsDataStore,
     private val usageTracker: UsageTracker
 ) : ViewModel() {
 
@@ -71,14 +71,19 @@ class DashboardViewModel @Inject constructor(
         Triple(breakMinutes, targetTime, easyWaitSeconds)
     }
 
-    private val settingsFlow = combine(settingsFlow1, settingsFlow2) { t1, t2 ->
+    private val settingsFlow = combine(
+        settingsFlow1,
+        settingsFlow2,
+        settingsDataStore.preventDisablingFocusMode
+    ) { t1, t2, preventDisabling ->
         DashboardSettings(
             blockingMode = BlockingMode.fromString(t1.first),
             challengeType = t1.second,
             challengeAmount = t1.third,
             breakDurationMinutes = t2.first,
             targetScreenTime = t2.second,
-            easyModeWaitSeconds = t2.third
+            easyModeWaitSeconds = t2.third,
+            preventDisablingFocusMode = preventDisabling
         )
     }
 
@@ -220,7 +225,8 @@ data class DashboardSettings(
     val challengeAmount: Int = 15,
     val breakDurationMinutes: Int = 5,
     val targetScreenTime: String = "2h",
-    val easyModeWaitSeconds: Int = 90
+    val easyModeWaitSeconds: Int = 90,
+    val preventDisablingFocusMode: Boolean = false
 )
 
 data class DashboardMetrics(

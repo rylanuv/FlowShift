@@ -30,6 +30,15 @@ import androidx.compose.ui.draw.paint
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.flow.shift.R
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextAlign
+import kotlin.math.roundToInt
+import androidx.compose.ui.layout.layout
 
 @Composable
 fun SettingsScreen(
@@ -40,8 +49,11 @@ fun SettingsScreen(
     showBackground: Boolean = false
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val isPremium by viewModel.isPremium.collectAsStateWithLifecycle()
     val blockingModeStr by viewModel.blockingMode.collectAsStateWithLifecycle()
     val currentMode = com.flow.shift.feature.modes.BlockingMode.fromString(blockingModeStr)
+    
+    var showTargetScreenTimeDialog by remember { mutableStateOf(false) }
 
     val protectedAppCount = state.blockedApps.size
     val enabledProtectionSignals = listOf(
@@ -69,6 +81,8 @@ fun SettingsScreen(
         }
     }
 
+    var showBlockSettingsWarning by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -77,7 +91,8 @@ fun SettingsScreen(
                     Modifier
                         .paint(
                             painter = painterResource(id = currentMode.backgroundImageRes),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            alpha = 0.9f
                         )
                         .background(SurfaceBlack.copy(alpha = 0.25f))
                 } else {
@@ -143,23 +158,23 @@ fun SettingsScreen(
                     viewModel.setPreventAppUninstall(false)
                 }
             }
-            SettingsToggleRow(icon = Icons.Default.Settings, label = "Block Settings Access", checked = state.protection.blockSettingsAccess) { viewModel.setBlockSettingsAccess(it) }
-            SettingsToggleRow(icon = Icons.Default.Lock, label = "Lock During Focus", checked = state.protection.lockDuringFocus) { viewModel.setLockDuringFocus(it) }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // ── Troubleshooting ──
-        SettingsSection(
-            modifier = Modifier.fillMaxWidth(),
-            icon = Icons.Default.Build,
-            title = "TROUBLESHOOTING",
-            subtitle = "Fix app issues"
-        ) {
-            SettingsNavRow(
-                icon = Icons.Default.BugReport,
-                label = "Check Permissions",
-                onClick = onNavigateToTroubleshoot
+            SettingsToggleRow(
+                icon = Icons.Default.Settings,
+                label = "Block Settings Access",
+                checked = state.protection.blockSettingsAccess
+            ) { isChecked ->
+                if (isChecked) {
+                    showBlockSettingsWarning = true
+                } else {
+                    viewModel.setBlockSettingsAccess(false)
+                }
+            }
+            SettingsToggleRow(
+                icon = Icons.Default.Lock,
+                label = "Prevent Disabling Focus Mode",
+                checked = state.protection.preventDisablingFocusMode,
+                subtitle = "Cannot stop Focus Mode once started",
+                onCheckedChange = { viewModel.setPreventDisablingFocusMode(it) }
             )
         }
 
@@ -177,6 +192,14 @@ fun SettingsScreen(
                 selectedOption = if (state.blockType == "REELS") "Reels Only" else "Whole App",
                 onOptionSelected = { if (it == "Reels Only") viewModel.setBlockType("REELS") else viewModel.setBlockType("WHOLE_APP") }
             )
+            Spacer(modifier = Modifier.height(16.dp))
+            SettingsToggleRow(
+                icon = Icons.Default.Pin,
+                label = "Show Reel Count",
+                checked = state.appearance.showReelCount,
+                subtitle = "Display reel count on top of screen",
+                onCheckedChange = { viewModel.setShowReelCount(it) }
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -192,7 +215,24 @@ fun SettingsScreen(
                 icon = Icons.Default.Flag,
                 label = "Daily Target",
                 value = state.targetScreenTime,
-                valueColor = Amber500
+                valueColor = Amber500,
+                onClick = { showTargetScreenTimeDialog = true }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // ── Troubleshooting ──
+        SettingsSection(
+            modifier = Modifier.fillMaxWidth(),
+            icon = Icons.Default.Build,
+            title = "TROUBLESHOOTING",
+            subtitle = "Fix app issues"
+        ) {
+            SettingsNavRow(
+                icon = Icons.Default.BugReport,
+                label = "Check Permissions",
+                onClick = onNavigateToTroubleshoot
             )
         }
 
@@ -233,7 +273,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.ExtraBold
                     )
                     Text(
-                        text = "Lifetime Access",
+                        text = if (isPremium) "Lifetime Access" else "Upgrade Now",
                         color = PremiumGold.copy(alpha = 0.7f),
                         fontSize = 12.sp
                     )
@@ -245,7 +285,7 @@ fun SettingsScreen(
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        text = "UNLOCKED",
+                        text = if (isPremium) "UNLOCKED" else "UNLOCK PRO",
                         color = PremiumGold,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -268,7 +308,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Manage Subscription",
+                    text = if (isPremium) "Manage Subscription" else "Upgrade to Pro",
                     color = Amber500,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
@@ -282,8 +322,299 @@ fun SettingsScreen(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // ── Support ──
+        SettingsSection(
+            modifier = Modifier.fillMaxWidth(),
+            icon = Icons.Default.Favorite,
+            title = "SUPPORT",
+            subtitle = "Get help and support us"
+        ) {
+            SettingsNavRow(
+                icon = Icons.Default.Star,
+                label = "Rate our app",
+                onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=${context.packageName}"))
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: android.content.ActivityNotFoundException) {
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=${context.packageName}")))
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            SettingsNavRow(
+                icon = Icons.Default.Email,
+                label = "Send Feedback",
+                onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+                        data = android.net.Uri.parse("mailto:rylpix.app@gmail.com")
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "FlowShift Feedback")
+                    }
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            SettingsNavRow(
+                icon = Icons.Default.Share,
+                label = "Share with friends",
+                onClick = {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "FlowShift App")
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Check out FlowShift, the best app to stop doomscrolling! https://play.google.com/store/apps/details?id=${context.packageName}")
+                    }
+                    context.startActivity(android.content.Intent.createChooser(intent, "Share via"))
+                }
+            )
+        }
     }
+
+        if (showBlockSettingsWarning) {
+            AlertDialog(
+                onDismissRequest = { showBlockSettingsWarning = false },
+                containerColor = SurfaceCard,
+                titleContentColor = TextPrimary,
+                textContentColor = TextSecondary,
+                title = { Text("Block Settings Access") },
+                text = { Text("After turning this on you will be locked out of settings. To access them again, you will have to wait 24 hours after clicking on the settings button.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.setBlockSettingsAccess(true)
+                            showBlockSettingsWarning = false
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = DangerRed)
+                    ) {
+                        Text("Turn On")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showBlockSettingsWarning = false
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = TextMuted)
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+        
+        if (showTargetScreenTimeDialog) {
+            TargetScreenTimeDialog(
+                currentValue = state.targetScreenTime,
+                onDismiss = { showTargetScreenTimeDialog = false },
+                onConfirm = { time ->
+                    viewModel.setTargetScreenTime(time)
+                    showTargetScreenTimeDialog = false
+                }
+            )
+        }
     }
+}
+
+private fun formatTargetScreenTime(sliderIndex: Float): String {
+    val index = sliderIndex.roundToInt().coerceIn(0, 36)
+    val totalMinutes = if (index <= 24) {
+        index * 15
+    } else {
+        360 + (index - 24) * 30
+    }
+    val h = totalMinutes / 60
+    val m = totalMinutes % 60
+    return when {
+        h == 0 && m == 0 -> "0m"
+        h == 0 -> "${m}m"
+        m == 0 -> "${h}h"
+        else -> "${h}h ${m}m"
+    }
+}
+
+private fun parseTargetScreenTimeToSliderValue(time: String): Float {
+    if (time == "0m") return 0f
+    
+    var h = 0
+    var m = 0
+    val parts = time.split(" ")
+    for (part in parts) {
+        if (part.endsWith("h")) h = part.dropLast(1).toIntOrNull() ?: 0
+        if (part.endsWith("m")) m = part.dropLast(1).toIntOrNull() ?: 0
+    }
+    
+    val totalMinutes = h * 60 + m
+    return if (totalMinutes <= 360) {
+        (totalMinutes / 15f)
+    } else {
+        24f + ((totalMinutes - 360) / 30f)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TargetScreenTimeDialog(
+    currentValue: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    val initialValue = parseTargetScreenTimeToSliderValue(currentValue)
+    var sliderValue by remember { mutableFloatStateOf(initialValue) }
+    
+    val index = sliderValue.roundToInt().coerceIn(0, 36)
+    val fraction = index / 36f
+    val formattedTime = formatTargetScreenTime(sliderValue)
+
+    // Colors
+    val sliderStartColor = Color(0xFF00E5FF)
+    val sliderMidColor = Color(0xFF99F2FF)
+    val sliderEndColor = Color(0xFFFFFFFF)
+
+    val currentColor = if (index <= 24) {
+        val f = index / 24f
+        androidx.compose.ui.graphics.lerp(sliderStartColor, sliderMidColor, f)
+    } else {
+        val f = (index - 24) / 12f
+        androidx.compose.ui.graphics.lerp(sliderMidColor, sliderEndColor, f)
+    }
+
+    var prevIndex by remember { mutableIntStateOf(index) }
+    val scale = remember { Animatable(1f) }
+
+    LaunchedEffect(index) {
+        val increased = index > prevIndex
+        prevIndex = index
+        if (increased) {
+            scale.animateTo(
+                targetValue = 1.25f,
+                animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing)
+            )
+            scale.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            )
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Daily Target", fontFamily = AppFontFamily) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Hour display
+                val currentTextSize = (32f + (fraction * 16f)).sp
+                Box(
+                    modifier = Modifier
+                        .height(80.dp)
+                        .scale(scale.value),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = formattedTime,
+                        color = currentColor,
+                        fontFamily = AppFontFamily,
+                        fontSize = currentTextSize,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Hour markers
+                androidx.compose.ui.layout.Layout(
+                    content = {
+                        Text("0m", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                        Text("3h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                        Text("6h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                        Text("12h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp)
+                ) { measurables, constraints ->
+                    val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
+                    layout(constraints.maxWidth, placeables.maxOf { it.height }) {
+                        val width = constraints.maxWidth
+                        val fractions = listOf(0f, 12f / 36f, 24f / 36f, 1f)
+                        placeables.forEachIndexed { i, placeable ->
+                            val x = (width * fractions[i] - placeable.width / 2f).roundToInt()
+                            placeable.placeRelative(x = x, y = 0)
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Custom slider
+                val sliderColors = SliderDefaults.colors(
+                    thumbColor = currentColor,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.12f),
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent
+                )
+                Slider(
+                    value = sliderValue,
+                    onValueChange = { sliderValue = it },
+                    valueRange = 0f..36f,
+                    steps = 35,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = sliderColors,
+                    track = { sliderState ->
+                        val trackFraction = (sliderState.value / 36f).coerceIn(0f, 1f)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.12f))
+                        ) {
+                            if (trackFraction > 0f) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(trackFraction)
+                                        .height(8.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                colors = if (index <= 24) {
+                                                    listOf(sliderStartColor, currentColor)
+                                                } else {
+                                                    listOf(sliderStartColor, sliderMidColor, currentColor)
+                                                }
+                                            )
+                                        )
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(formattedTime) }) {
+                Text("Save", color = Amber500, fontFamily = AppFontFamily)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary, fontFamily = AppFontFamily)
+            }
+        },
+        containerColor = SurfaceBlack,
+        titleContentColor = TextPrimary
+    )
 }
 
 // ═══════════════════════════════════════════

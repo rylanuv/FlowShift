@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "270397517613",
+    "project_id": "flowshift-stop-scrolling",
+    "storage_bucket": "flowshift-stop-scrolling.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:270397517613:android:ae9265071f8335102e2da4",
+        "android_client_info": {
+          "package_name": "com.flow.shift"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCNm3aSZsVbjl6KuCUTezl7sreRIU2gig"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

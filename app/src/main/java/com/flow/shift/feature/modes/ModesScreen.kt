@@ -9,9 +9,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FitnessCenter
@@ -48,7 +50,6 @@ fun ModesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pendingChange by viewModel.pendingModeChange.collectAsStateWithLifecycle()
-    val pendingChallengeType by viewModel.pendingStrictChallengeType.collectAsStateWithLifecycle()
     val downgradeWaitRemaining by viewModel.downgradeWaitRemainingSeconds.collectAsStateWithLifecycle()
 
     Box(
@@ -59,7 +60,8 @@ fun ModesScreen(
                     Modifier
                         .paint(
                             painter = painterResource(id = uiState.currentMode.backgroundImageRes),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            alpha = 0.9f
                         )
                         .background(SurfaceBlack.copy(alpha = 0.25f))
                 } else {
@@ -139,8 +141,6 @@ fun ModesScreen(
             PendingChangeType.UPGRADE_CONFIRMATION -> {
                 UpgradeConfirmationDialog(
                     targetMode = change.targetMode,
-                    pendingChallengeType = pendingChallengeType,
-                    onPendingChallengeTypeChange = { viewModel.setPendingStrictChallengeType(it) },
                     onConfirm = { viewModel.confirmModeChange() },
                     onDismiss = { viewModel.dismissModeChange() }
                 )
@@ -148,10 +148,8 @@ fun ModesScreen(
             PendingChangeType.DOWNGRADE_CONFIRMATION -> {
                 DowngradeConfirmationDialog(
                     targetMode = change.targetMode,
-                    pendingChallengeType = pendingChallengeType,
                     downgradeWaitRemaining = downgradeWaitRemaining,
                     autoDowngradeAtMidnight = uiState.autoDowngradeAtMidnight,
-                    onPendingChallengeTypeChange = { viewModel.setPendingStrictChallengeType(it) },
                     onAutoDowngradeChange = { viewModel.setAutoDowngradeAtMidnight(it) },
                     onConfirm = { viewModel.confirmModeChange() },
                     onDismiss = { viewModel.dismissModeChange() }
@@ -162,10 +160,12 @@ fun ModesScreen(
 }
 
 private fun buildStrictDescription(challengeType: String): String {
-    return if (challengeType == "MATH") {
-        "Solve advanced maths to earn scroll time."
-    } else {
-        "Perform pushups to earn scroll time."
+    return when (challengeType) {
+        "MATH" -> "Solve maths to earn scroll time."
+        "ADVANCED_MATH" -> "Solve advanced maths to earn scroll time."
+        "SQUATS" -> "Perform squats to earn scroll time."
+        "CHARGE_PHONE" -> "Charge your phone to earn scroll time."
+        else -> "Perform pushups to earn scroll time."
     }
 }
 
@@ -277,86 +277,11 @@ private fun ModeCard(
     }
 }
 
-// ── Challenge Type Selector (for Strict Mode) ──
-@Composable
-private fun ChallengeTypeSelector(
-    selectedType: String,
-    onTypeSelected: (String) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        ChallengeChip(
-            label = "15 Pushups",
-            icon = Icons.Default.FitnessCenter,
-            isSelected = selectedType == "PUSHUPS",
-            accentColor = ModeStrictAccent,
-            onClick = { onTypeSelected("PUSHUPS") },
-            modifier = Modifier.weight(1f).fillMaxHeight()
-        )
-        ChallengeChip(
-            label = "5 Math Problems",
-            icon = Icons.Default.Psychology,
-            isSelected = selectedType == "MATH",
-            accentColor = ModeStrictAccent,
-            onClick = { onTypeSelected("MATH") },
-            modifier = Modifier.weight(1f).fillMaxHeight()
-        )
-    }
-}
-
-@Composable
-private fun ChallengeChip(
-    label: String,
-    icon: ImageVector,
-    isSelected: Boolean,
-    accentColor: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                if (isSelected) accentColor.copy(alpha = 0.15f) else SurfaceCardLight
-            )
-            .border(
-                width = if (isSelected) 1.dp else 0.dp,
-                color = if (isSelected) accentColor.copy(alpha = 0.4f) else Color.Transparent,
-                shape = RoundedCornerShape(14.dp)
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (isSelected) accentColor else TextSecondary,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = label,
-                color = if (isSelected) accentColor else TextSecondary,
-                fontSize = 13.sp,
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-            )
-        }
-    }
-}
 
 // ── Upgrade Confirmation Dialog ──
 @Composable
 private fun UpgradeConfirmationDialog(
     targetMode: BlockingMode,
-    pendingChallengeType: String,
-    onPendingChallengeTypeChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -411,15 +336,11 @@ private fun UpgradeConfirmationDialog(
                 if (targetMode == BlockingMode.STRICT) {
                     Spacer(modifier = Modifier.height(20.dp))
                     Text(
-                        text = "Choose your challenge:",
-                        color = TextPrimary,
+                        text = "Configure your challenge",
+                        color = TextSecondary,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-                    ChallengeTypeSelector(
-                        selectedType = pendingChallengeType,
-                        onTypeSelected = onPendingChallengeTypeChange
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
                     )
                 }
                 
@@ -441,7 +362,7 @@ private fun UpgradeConfirmationDialog(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Downgrading back will require an 8-hour cooldown period.",
+                        text = "Downgrading back will require a 6-hour cooldown period.",
                         color = Amber500,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
@@ -480,10 +401,8 @@ private fun UpgradeConfirmationDialog(
 @Composable
 private fun DowngradeConfirmationDialog(
     targetMode: BlockingMode,
-    pendingChallengeType: String,
     downgradeWaitRemaining: Int,
     autoDowngradeAtMidnight: Boolean,
-    onPendingChallengeTypeChange: (String) -> Unit,
     onAutoDowngradeChange: (Boolean) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -513,15 +432,11 @@ private fun DowngradeConfirmationDialog(
                 if (targetMode == BlockingMode.STRICT) {
                     Spacer(modifier = Modifier.height(20.dp))
                     Text(
-                        text = "Choose your challenge:",
-                        color = TextPrimary,
+                        text = "Configure your challenge",
+                        color = TextSecondary,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-                    ChallengeTypeSelector(
-                        selectedType = pendingChallengeType,
-                        onTypeSelected = onPendingChallengeTypeChange
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
                     )
                 }
 
@@ -600,4 +515,7 @@ private fun getModeDescription(mode: BlockingMode): String {
     return when (mode) {
         BlockingMode.EASY -> "After the set screen time, hold for 90 seconds before you can proceed scrolling again."
         BlockingMode.STRICT -> "Perform pushups or solve advanced maths to earn scroll time."
-        Bl
+        BlockingMode.HARDCORE -> "Once the timer hits, you can't scroll anymore."
+    }
+}
+

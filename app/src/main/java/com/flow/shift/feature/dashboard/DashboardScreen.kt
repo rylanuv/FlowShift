@@ -1,6 +1,13 @@
 package com.flow.shift.feature.dashboard
 
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.FitnessCenter
@@ -86,10 +94,12 @@ fun DashboardScreen(
             .then(
                 if (showBackground) {
                     val bgRes = (uiState as? DashboardUiState.Success)?.settings?.blockingMode?.backgroundImageRes ?: R.drawable.main_screen
+                    val bgAlpha = if (bgRes == R.drawable.strict_home) 0.8f else 0.9f
                     Modifier
                         .paint(
                             painter = painterResource(id = bgRes),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            alpha = bgAlpha
                         )
                         .background(SurfaceBlack.copy(alpha = 0.25f))
                 } else {
@@ -146,9 +156,14 @@ private fun DashboardContent(
         BlockingMode.STRICT -> ModeStrictAccent
         BlockingMode.HARDCORE -> ModeHardcoreAccent
     }
-
-    val now = System.currentTimeMillis()
-    val isFocusModeActive = metrics.focusModeUntilMillis > now
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000L)
+            now = System.currentTimeMillis()
+        }
+    }
+    val isFocusModeActive = metrics.focusModeUntilMillis > now && blockingMode != BlockingMode.HARDCORE
     val isBreakActive = metrics.unlockExpiresAtMillis != null && metrics.unlockExpiresAtMillis > now
 
     val displayMillis = when {
@@ -174,8 +189,16 @@ private fun DashboardContent(
         metrics.protectedApps.isEmpty() -> "Add protected apps"
         else -> "Earn a break"
     }
+
+    val activeColor by animateColorAsState(
+        targetValue = if (isFocusModeActive) Color(0xFFD32F2F) /* Deep Red */ else modeAccent,
+        animationSpec = tween(500),
+        label = "activeColor"
+    )
+    val glowAlpha = if (isFocusModeActive) 0.4f else 0f
+
     var showAddMoreBottomSheet by remember { mutableStateOf(false) }
-    var showFocusModeDialog by remember { mutableStateOf(false) }
+    var showStopFocusModeDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -222,9 +245,15 @@ private fun DashboardContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .shadow(
+                    elevation = if (isFocusModeActive) 16.dp else 0.dp,
+                    shape = RoundedCornerShape(28.dp),
+                    ambientColor = activeColor.copy(alpha = glowAlpha),
+                    spotColor = activeColor.copy(alpha = glowAlpha)
+                )
                 .clip(RoundedCornerShape(28.dp))
                 .background(SurfaceCard.copy(alpha = 0.55f))
-                .border(1.dp, GlassBorderBrush, RoundedCornerShape(28.dp))
+                .border(1.dp, if (isFocusModeActive) androidx.compose.ui.graphics.SolidColor(activeColor.copy(alpha = glowAlpha)) else GlassBorderBrush, RoundedCornerShape(28.dp))
                 .padding(vertical = 32.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -245,7 +274,7 @@ private fun DashboardContent(
                         // Animated foreground — tinted per mode
                         val sweepAngle = animatedProgress * 260f
                         drawArc(
-                            color = modeAccent,
+                            color = activeColor,
                             startAngle = 140f,
                             sweepAngle = sweepAngle,
                             useCenter = false,
@@ -260,7 +289,7 @@ private fun DashboardContent(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = topLabel,
-                        color = modeAccent,
+                        color = activeColor,
                         fontFamily = AppFontFamily,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -347,7 +376,7 @@ private fun DashboardContent(
                 val easyWait = settings.easyModeWaitSeconds
                 BreakButton(
                     text = "Take a Break",
-                    subtext = "${easyWait}s wait required",
+                    subtext = if (metrics.remainingMillis > 0L) "You still have time, enjoy it" else "${easyWait}s wait required",
                     accentColor = modeAccent,
                     enabled = metrics.remainingMillis <= 0L,
                     onClick = {
@@ -363,7 +392,7 @@ private fun DashboardContent(
             BlockingMode.STRICT -> {
                 BreakButton(
                     text = "Take a Break",
-                    subtext = if (challengeType == "MATH") "Solve math first" else "Complete pushups first",
+                    subtext = if (metrics.remainingMillis > 0L) "You still have time, enjoy it" else if (challengeType == "MATH") "Solve math first" else "Complete pushups first",
                     accentColor = modeAccent,
                     enabled = metrics.remainingMillis <= 0L,
                     onClick = {
@@ -388,23 +417,24 @@ private fun DashboardContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        if (isFocusModeActive) {
-            BreakButton(
-                text = "Stop Focus Mode",
-                subtext = "Unblock apps instantly",
-                accentColor = StatusRed,
-                enabled = true,
-                onClick = { onStopFocusMode() }
-            )
-        } else {
-            BreakButton(
-                text = "Start Focus Mode",
-                subtext = "Block apps instantly",
-                accentColor = Color(0xFF6366F1), // Indigo
-                enabled = true,
-                onClick = { showFocusModeDialog = true }
-            )
+        if (blockingMode != BlockingMode.HARDCORE) {
+            Spacer(modifier = Modifier.height(16.dp))
+            if (isFocusModeActive) {
+                BreakButton(
+                    text = if (settings.preventDisablingFocusMode) "Focus Mode Active" else "Stop Focus Mode",
+                    subtext = if (settings.preventDisablingFocusMode) null else "Unblock apps instantly",
+                    accentColor = StatusRed,
+                    enabled = !settings.preventDisablingFocusMode,
+                    disabledTint = StatusRed,
+                    onClick = { showStopFocusModeDialog = true }
+                )
+            } else {
+                FocusModeSliderButton(
+                    accentColor = modeAccent,
+                    enabled = metrics.remainingMillis > 0L,
+                    onStartFocusMode = { minutes -> onStartFocusMode(minutes) }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -425,10 +455,12 @@ private fun DashboardContent(
                 )
             }
             BlockingMode.STRICT -> {
-                val (title, icon) = if (challengeType == "MATH") {
-                    "$challengeAmount Math Problems" to Icons.Default.Psychology
-                } else {
-                    "$challengeAmount Push-ups" to Icons.Default.FitnessCenter
+                val (title, icon) = when (challengeType) {
+                    "MATH" -> "$challengeAmount Maths" to Icons.Default.Psychology
+                    "ADVANCED_MATH" -> "$challengeAmount Adv Maths" to Icons.Default.Psychology
+                    "SQUATS" -> "$challengeAmount Squats" to Icons.Default.FitnessCenter
+                    "CHARGE_PHONE" -> "Charge Phone" to Icons.Default.BatteryChargingFull
+                    else -> "$challengeAmount Push-ups" to Icons.Default.FitnessCenter
                 }
                 NextChallengeCard(
                     icon = icon,
@@ -814,45 +846,37 @@ private fun DashboardContent(
         )
     }
 
-    if (showFocusModeDialog) {
+    if (showStopFocusModeDialog) {
         AlertDialog(
-            onDismissRequest = { showFocusModeDialog = false },
+            onDismissRequest = { showStopFocusModeDialog = false },
             containerColor = SurfaceCard,
             title = {
                 Text(
-                    text = "Start Focus Mode",
+                    text = "Stop Focus Mode?",
                     color = TextPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
-                Column {
-                    Text(
-                        text = "Select how long you want to block all protected apps.",
-                        color = TextSecondary,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    val options = listOf(15, 30, 45, 60, 120)
-                    options.forEach { minutes ->
-                        Text(
-                            text = "$minutes minutes",
-                            color = TextPrimary,
-                            fontSize = 16.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onStartFocusMode(minutes)
-                                    showFocusModeDialog = false
-                                }
-                                .padding(vertical = 12.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = "Are you sure you want to stop Focus Mode?",
+                    color = TextSecondary,
+                    fontSize = 14.sp
+                )
             },
             confirmButton = {
-                TextButton(onClick = { showFocusModeDialog = false }) {
+                TextButton(
+                    onClick = { 
+                        onStopFocusMode() 
+                        showStopFocusModeDialog = false
+                    }
+                ) {
+                    Text("Stop", color = StatusRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStopFocusModeDialog = false }) {
                     Text("Cancel", color = TextSecondary)
                 }
             }
@@ -930,9 +954,10 @@ private fun NextChallengeCard(
 @Composable
 private fun BreakButton(
     text: String,
-    subtext: String,
+    subtext: String?,
     accentColor: Color,
     enabled: Boolean,
+    disabledTint: Color? = null,
     onClick: () -> Unit
 ) {
     val darkTextColor = Color(0xFF111318)
@@ -954,8 +979,8 @@ private fun BreakButton(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(SurfaceCardLight.copy(alpha = 0.4f))
-            .border(1.dp, TextMuted.copy(alpha = 0.2f), shape)
+            .background(disabledTint?.copy(alpha = 0.15f) ?: SurfaceCardLight.copy(alpha = 0.4f))
+            .border(1.dp, disabledTint?.copy(alpha = 0.3f) ?: TextMuted.copy(alpha = 0.2f), shape)
     }
 
     Row(
@@ -973,14 +998,14 @@ private fun BreakButton(
                     .clip(CircleShape)
                     .background(
                         if (enabled) Color.Black.copy(alpha = 0.15f)
-                        else Color.White.copy(alpha = 0.05f)
+                        else (disabledTint?.copy(alpha = 0.15f) ?: Color.White.copy(alpha = 0.05f))
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = if (enabled) Icons.Default.LocalCafe else Icons.Default.Block,
                     contentDescription = null,
-                    tint = if (enabled) darkTextColor else TextMuted,
+                    tint = if (enabled) darkTextColor else (disabledTint?.copy(alpha = 0.8f) ?: TextMuted),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -988,17 +1013,19 @@ private fun BreakButton(
             Column {
                 Text(
                     text = text,
-                    color = if (enabled) darkTextColor else TextMuted,
+                    color = if (enabled) darkTextColor else (disabledTint?.copy(alpha = 0.9f) ?: TextMuted),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtext,
-                    color = if (enabled) darkTextColor.copy(alpha = 0.8f) else TextMuted.copy(alpha = 0.6f),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                if (subtext != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtext,
+                        color = if (enabled) darkTextColor.copy(alpha = 0.8f) else (disabledTint?.copy(alpha = 0.6f) ?: TextMuted.copy(alpha = 0.6f)),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
 

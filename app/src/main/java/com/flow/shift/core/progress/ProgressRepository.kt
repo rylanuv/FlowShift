@@ -6,7 +6,6 @@ import com.flow.shift.core.database.WorkoutSessionDao
 import com.flow.shift.core.database.WorkoutSessionEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.first
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -24,8 +23,7 @@ class ProgressRepository @Inject constructor(
     ) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         
-        val recentSessions = workoutSessionDao.getAllSessions().first()
-        val latestSession = recentSessions.find { it.targetAppPackage == targetPackage }
+        val latestSession = workoutSessionDao.getLatestSessionForPackage(targetPackage)
         val baseTime = if (latestSession != null && latestSession.timeUnlockedMillis > now) {
             latestSession.timeUnlockedMillis
         } else {

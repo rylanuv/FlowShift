@@ -11,7 +11,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -65,8 +65,10 @@ class MainActivity : ComponentActivity() {
                 
                 if (isOnboardingCompleted != null) {
                     if (isOnboardingCompleted == true) {
-                        val serviceIntent = Intent(this@MainActivity, AppTrackingService::class.java)
-                        ContextCompat.startForegroundService(this@MainActivity, serviceIntent)
+                        LaunchedEffect(Unit) {
+                            val serviceIntent = Intent(this@MainActivity, AppTrackingService::class.java)
+                            ContextCompat.startForegroundService(this@MainActivity, serviceIntent)
+                        }
                         FlowShiftApp(startDestination = "main", settingsDataStore = settingsDataStore)
                     } else {
                         FlowShiftApp(startDestination = "onboarding", settingsDataStore = settingsDataStore)
@@ -84,18 +86,83 @@ class MainActivity : ComponentActivity() {
 fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsDataStore? = null) {
     val navController = rememberNavController()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
     val coroutineScope = rememberCoroutineScope()
     
     val currentModeStr by (settingsDataStore?.blockingMode ?: kotlinx.coroutines.flow.flowOf("EASY"))
         .collectAsStateWithLifecycle(initialValue = "EASY")
     val currentMode = BlockingMode.fromString(currentModeStr)
+
+    val blockSettingsAccess by (settingsDataStore?.blockSettingsAccess ?: kotlinx.coroutines.flow.flowOf(false))
+        .collectAsStateWithLifecycle(initialValue = false)
+    val settingsUnlockInitiatedAt by (settingsDataStore?.settingsUnlockInitiatedAt ?: kotlinx.coroutines.flow.flowOf(0L))
+        .collectAsStateWithLifecycle(initialValue = 0L)
+
+    val isSettingsLocked = remember(blockSettingsAccess, settingsUnlockInitiatedAt) {
+        val now = System.currentTimeMillis()
+        val ONE_DAY_MILLIS = 24 * 60 * 60 * 1000L
+        blockSettingsAccess && (settingsUnlockInitiatedAt == 0L || now - settingsUnlockInitiatedAt < ONE_DAY_MILLIS)
+    }
+
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { if (isSettingsLocked) 2 else 3 })
+    
+    var showSettingsBlockedDialog by remember { mutableStateOf(false) }
+
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    if (showSettingsBlockedDialog) {
+        val now = System.currentTimeMillis()
+        val ONE_DAY_MILLIS = 24 * 60 * 60 * 1000L
+        
+        if (settingsUnlockInitiatedAt == 0L) {
+            AlertDialog(
+                onDismissRequest = { showSettingsBlockedDialog = false },
+                containerColor = Color(0xFF111111), // SurfaceCard
+                titleContentColor = Color(0xFFFFFFFF), // TextPrimary
+                textContentColor = Color(0xFFA1A1AA), // TextSecondary
+                title = { Text("Settings Locked") },
+                text = { Text("Settings are currently locked. If you wish to unlock them, a 24-hour timer will start.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                settingsDataStore?.setSettingsUnlockInitiatedAt(now)
+                            }
+                            showSettingsBlockedDialog = false
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFF59E0B)) // Amber500
+                    ) { Text("Start Unlock Timer") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showSettingsBlockedDialog = false },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF71717A)) // TextMuted
+                    ) { Text("Cancel") }
+                }
+            )
+        } else {
+            val remainingMillis = ONE_DAY_MILLIS - (now - settingsUnlockInitiatedAt)
+            val hours = remainingMillis / (60 * 60 * 1000)
+            val minutes = (remainingMillis % (60 * 60 * 1000)) / (60 * 1000)
+            AlertDialog(
+                onDismissRequest = { showSettingsBlockedDialog = false },
+                containerColor = Color(0xFF111111), // SurfaceCard
+                titleContentColor = Color(0xFFFFFFFF), // TextPrimary
+                textContentColor = Color(0xFFA1A1AA), // TextSecondary
+                title = { Text("Unlock in Progress") },
+                text = { Text("Settings will be unlocked in $hours hours and $minutes minutes.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = { showSettingsBlockedDialog = false },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFF59E0B)) // Amber500
+                    ) { Text("OK") }
+                }
+            )
+        }
+    }
     
     Scaffold(
         bottomBar = {
-            val navBackStackEntry by navController.currentBackStackEntryAsState()
-            val currentRoute = navBackStackEntry?.destination?.route
-            
             // Only show bottom bar on main screen or individual legacy tabs
             if (currentRoute == "main" || currentRoute in listOf("dashboard", "modes", "settings")) {
                 NavigationBar(
@@ -114,6 +181,15 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                             label = { Text(label, fontSize = 10.sp) },
                             selected = pagerState.currentPage == index && currentRoute == "main",
                             onClick = {
+                                if (index == 2 && blockSettingsAccess) {
+                                    val now = System.currentTimeMillis()
+                                    val ONE_DAY_MILLIS = 24 * 60 * 60 * 1000L
+                                    if (settingsUnlockInitiatedAt == 0L || now - settingsUnlockInitiatedAt < ONE_DAY_MILLIS) {
+                                        showSettingsBlockedDialog = true
+                                        return@NavigationBarItem
+                                    }
+                                }
+                                
                                 if (currentRoute != "main") {
                                     navController.navigate("main") {
                                         popUpTo(navController.graph.findStartDestination().id) {
@@ -151,7 +227,8 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                         .fillMaxSize()
                         .paint(
                             painter = painterResource(id = currentMode.backgroundImageRes),
-                            contentScale = ContentScale.Crop
+                            contentScale = ContentScale.Crop,
+                            alpha = 0.9f
                         )
                         .background(SurfaceBlack.copy(alpha = 0.25f))
                 ) {
@@ -207,7 +284,8 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
             }
             composable("disciplineModeSettings") {
                 DisciplineModeSettingsScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToSubscription = { navController.navigate("subscription") }
                 )
             }
             composable("hardcoreModeSettings") {
@@ -250,4 +328,3 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
         }
     }
 }
-

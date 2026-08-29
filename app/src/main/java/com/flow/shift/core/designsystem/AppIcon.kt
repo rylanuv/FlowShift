@@ -2,7 +2,7 @@ package com.flow.shift.core.designsystem
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -29,10 +29,13 @@ import androidx.compose.ui.unit.sp
 import com.flow.shift.theme.AppFontFamily
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 
-private val iconCache = ConcurrentHashMap<String, ImageBitmap>()
+private val iconCache = object : LruCache<String, ImageBitmap>(MAX_ICON_CACHE_BYTES) {
+    override fun sizeOf(key: String, value: ImageBitmap): Int {
+        return value.width * value.height * BYTES_PER_PIXEL
+    }
+}
 
 @Composable
 fun AppIcon(
@@ -76,29 +79,22 @@ fun AppIcon(
 @Composable
 fun rememberAppIconBitmap(packageName: String): ImageBitmap? {
     val context = LocalContext.current
-    val cached = remember(packageName) { iconCache[packageName] }
+    val cached = remember(packageName) { getCachedIcon(packageName) }
     if (cached != null) {
         return cached
     }
 
     val iconBitmap by produceState<ImageBitmap?>(initialValue = null, packageName) {
         val bitmap = withContext(Dispatchers.IO) {
-            iconCache[packageName] ?: runCatching {
+            getCachedIcon(packageName) ?: runCatching {
                 val pm = context.packageManager
                 val drawable = pm.getApplicationIcon(packageName)
-                val bmp = if (drawable is BitmapDrawable && drawable.bitmap != null) {
-                    drawable.bitmap
-                } else {
-                    val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 150
-                    val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 150
-                    val b = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(b)
-                    drawable.setBounds(0, 0, canvas.width, canvas.height)
-                    drawable.draw(canvas)
-                    b
-                }
+                val bmp = Bitmap.createBitmap(ICON_SIZE_PX, ICON_SIZE_PX, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bmp)
+                drawable.setBounds(0, 0, ICON_SIZE_PX, ICON_SIZE_PX)
+                drawable.draw(canvas)
                 bmp.asImageBitmap().also { loaded ->
-                    iconCache[packageName] = loaded
+                    putCachedIcon(packageName, loaded)
                 }
             }.getOrNull()
         }
@@ -122,4 +118,16 @@ private fun colorForPackage(packageName: String): Color {
     )
     val index = abs(packageName.hashCode()) % palette.size
     return palette[index]
+}
+
+private const val ICON_SIZE_PX = 96
+private const val BYTES_PER_PIXEL = 4
+private const val MAX_ICON_CACHE_BYTES = 32 * 1024 * 1024
+
+private fun getCachedIcon(packageName: String): ImageBitmap? {
+    return synchronized(iconCache) { iconCache.get(packageName) }
+}
+
+private fun putCachedIcon(packageName: String, bitmap: ImageBitmap) {
+    synchronized(iconCache) { iconCache.put(packageName, bitmap) }
 }

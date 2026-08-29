@@ -16,50 +16,61 @@ class UsageTracker @Inject constructor(
     private val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
     private var lastKnownForegroundApp: String? = null
+    private var lastForegroundQueryMillis: Long = 0L
+    private var usageCache: UsageCacheEntry? = null
+    private var opensCache: OpensCacheEntry? = null
 
+    @Synchronized
     fun getForegroundApp(): String? {
         val timeNow = System.currentTimeMillis()
-        // Query the last 60 seconds to account for Android batching UsageEvents
-        val sinceTime = timeNow - 60_000 
+        val sinceTime = if (lastForegroundQueryMillis == 0L) {
+            timeNow - INITIAL_FOREGROUND_QUERY_WINDOW_MS
+        } else {
+            (lastForegroundQueryMillis - FOREGROUND_QUERY_OVERLAP_MS)
+                .coerceAtLeast(timeNow - INITIAL_FOREGROUND_QUERY_WINDOW_MS)
+        }
+        lastForegroundQueryMillis = timeNow
         val events = usageStatsManager.queryEvents(sinceTime, timeNow)
         
-        var currentApp: String? = null
+        var currentApp = lastKnownForegroundApp
         val event = UsageEvents.Event()
-        var hasNewEvents = false
 
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                currentApp = event.packageName
-                hasNewEvents = true
-            } else if (event.eventType == UsageEvents.Event.ACTIVITY_PAUSED) {
-                if (currentApp == event.packageName) {
-                    currentApp = null
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    currentApp = event.packageName
                 }
-                hasNewEvents = true
+                UsageEvents.Event.ACTIVITY_PAUSED -> {
+                    if (currentApp == event.packageName) {
+                        currentApp = null
+                    }
+                }
             }
         }
-        
-        if (hasNewEvents) {
-            if (currentApp != null) {
-                lastKnownForegroundApp = currentApp
-            } else {
-                // Keep the last known app even if the last event in the 60s window was a pause, 
-                // because they might just be on the home screen, or transitioning. 
-                // Actually, if it's explicitly paused and nothing else resumed, they left the app.
-                lastKnownForegroundApp = null
-            }
-        }
-        
+
+        lastKnownForegroundApp = currentApp
         return lastKnownForegroundApp
     }
 
+    @Synchronized
     fun getUsageMillisByPackage(
         sinceTime: Long,
         untilTime: Long,
         packageNames: Set<String>
     ): Map<String, Long> {
         if (packageNames.isEmpty()) return emptyMap()
+        val requestedPackages = packageNames.toSet()
+        usageCache?.let { cache ->
+            if (
+                cache.sinceTime == sinceTime &&
+                cache.packageNames == requestedPackages &&
+                untilTime >= cache.untilTime &&
+                untilTime - cache.untilTime < USAGE_CACHE_TTL_MS
+            ) {
+                return cache.usage
+            }
+        }
 
         val events = usageStatsManager.queryEvents(sinceTime, untilTime)
         val usageMap = mutableMapOf<String, Long>()
@@ -90,15 +101,33 @@ class UsageTracker @Inject constructor(
             }
         }
 
+        usageCache = UsageCacheEntry(
+            sinceTime = sinceTime,
+            untilTime = untilTime,
+            packageNames = requestedPackages,
+            usage = usageMap.toMap()
+        )
         return usageMap
     }
 
+    @Synchronized
     fun getAppOpensByPackage(
         sinceTime: Long,
         untilTime: Long,
         packageNames: Set<String>
     ): Map<String, Int> {
         if (packageNames.isEmpty()) return emptyMap()
+        val requestedPackages = packageNames.toSet()
+        opensCache?.let { cache ->
+            if (
+                cache.sinceTime == sinceTime &&
+                cache.packageNames == requestedPackages &&
+                untilTime >= cache.untilTime &&
+                untilTime - cache.untilTime < USAGE_CACHE_TTL_MS
+            ) {
+                return cache.opens
+            }
+        }
 
         val events = usageStatsManager.queryEvents(sinceTime, untilTime)
         val openMap = mutableMapOf<String, Int>()
@@ -117,6 +146,12 @@ class UsageTracker @Inject constructor(
                 }
             }
         }
+        opensCache = OpensCacheEntry(
+            sinceTime = sinceTime,
+            untilTime = untilTime,
+            packageNames = requestedPackages,
+            opens = openMap.toMap()
+        )
         return openMap
     }
 
@@ -128,6 +163,26 @@ class UsageTracker @Inject constructor(
             context.packageName
         )
         return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private data class UsageCacheEntry(
+        val sinceTime: Long,
+        val untilTime: Long,
+        val packageNames: Set<String>,
+        val usage: Map<String, Long>
+    )
+
+    private data class OpensCacheEntry(
+        val sinceTime: Long,
+        val untilTime: Long,
+        val packageNames: Set<String>,
+        val opens: Map<String, Int>
+    )
+
+    private companion object {
+        const val INITIAL_FOREGROUND_QUERY_WINDOW_MS = 60_000L
+        const val FOREGROUND_QUERY_OVERLAP_MS = 5_000L
+        const val USAGE_CACHE_TTL_MS = 15_000L
     }
 }
 
