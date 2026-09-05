@@ -2,11 +2,14 @@ package com.flow.shift.feature.exerciseblocker
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.flow.shift.core.datastore.SettingsDataStore
 import com.flow.shift.core.progress.ProgressRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -19,8 +22,23 @@ sealed class BlockerUiState {
 
 @HiltViewModel
 class BlockerViewModel @Inject constructor(
-    private val progressRepository: ProgressRepository
+    private val progressRepository: ProgressRepository,
+    private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
+
+    val challengeDifficulty: StateFlow<String> = settingsDataStore.challengeDifficulty
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = "Medium"
+        )
+
+    val advancedMathTopics: StateFlow<Set<String>> = settingsDataStore.advancedMathTopics
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = setOf("POLYNOMIAL")
+        )
 
     private val _uiState = MutableStateFlow<BlockerUiState>(BlockerUiState.Intro)
     val uiState: StateFlow<BlockerUiState> = _uiState.asStateFlow()

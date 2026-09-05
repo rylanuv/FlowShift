@@ -56,10 +56,6 @@ class ModesViewModel @Inject constructor(
     private val _pendingModeChange = MutableStateFlow<PendingModeChange?>(null)
     val pendingModeChange: StateFlow<PendingModeChange?> = _pendingModeChange.asStateFlow()
 
-    // Temporarily track the user's challenge selection in the confirmation dialog
-    private val _pendingStrictChallengeType = MutableStateFlow("PUSHUPS")
-    val pendingStrictChallengeType: StateFlow<String> = _pendingStrictChallengeType.asStateFlow()
-
     private var downgradeTimerJob: Job? = null
     private val _downgradeWaitRemainingSeconds = MutableStateFlow(0)
     val downgradeWaitRemainingSeconds: StateFlow<Int> = _downgradeWaitRemainingSeconds.asStateFlow()
@@ -67,9 +63,6 @@ class ModesViewModel @Inject constructor(
     fun requestModeChange(newMode: BlockingMode) {
         val currentMode = uiState.value.currentMode
         if (newMode == currentMode) return
-
-        // Default the pending selection to whatever is currently saved
-        _pendingStrictChallengeType.value = uiState.value.strictChallengeType
 
         // Upgrading or downgrading — show confirmation
         if (newMode.isDowngradeFrom(currentMode)) {
@@ -129,9 +122,6 @@ class ModesViewModel @Inject constructor(
                 if (downgradeWaitRemainingSeconds.value > 0) {
                     if (uiState.value.autoDowngradeAtMidnight) {
                         settingsDataStore.setDowngradeRequestTarget(pending.targetMode.name)
-                        if (pending.targetMode == BlockingMode.STRICT) {
-                            settingsDataStore.setStrictChallengeType(_pendingStrictChallengeType.value)
-                        }
                         settingsDataStore.setLastAutoDowngradeTime(System.currentTimeMillis())
                         _pendingModeChange.value = null
                         return@launch
@@ -140,9 +130,6 @@ class ModesViewModel @Inject constructor(
                 settingsDataStore.setLastDowngradeTime(System.currentTimeMillis())
                 settingsDataStore.setDowngradeRequestTime(0L)
                 settingsDataStore.setDowngradeRequestTarget(null)
-            }
-            if (pending.targetMode == BlockingMode.STRICT) {
-                settingsDataStore.setStrictChallengeType(_pendingStrictChallengeType.value)
             }
             settingsDataStore.setBlockingMode(pending.targetMode.name)
             downgradeTimerJob?.cancel()
@@ -155,9 +142,6 @@ class ModesViewModel @Inject constructor(
         _pendingModeChange.value = null
     }
 
-    fun setPendingStrictChallengeType(type: String) {
-        _pendingStrictChallengeType.value = type
-    }
 
     fun setAutoDowngradeAtMidnight(enabled: Boolean) {
         viewModelScope.launch {

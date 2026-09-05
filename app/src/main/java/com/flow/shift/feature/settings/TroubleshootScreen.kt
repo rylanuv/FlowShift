@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -342,6 +343,16 @@ fun TroubleshootScreen(
                         description = "Skip the 6-hour waiting period for downgrading mode",
                         isChecked = state.bypassDowngradeWaitTime,
                         onCheckedChange = { viewModel.setBypassDowngradeWaitTime(it) }
+                    )
+                }
+
+                item {
+                    DeveloperToggleItem(
+                        icon = Icons.Default.Lock,
+                        title = "Bypass Target Lock",
+                        description = "Allow modifying daily target even when locked",
+                        isChecked = state.bypassTargetLock,
+                        onCheckedChange = { viewModel.setBypassTargetLock(it) }
                     )
                 }
             }

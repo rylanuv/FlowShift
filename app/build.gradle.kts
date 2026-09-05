@@ -1,6 +1,5 @@
 plugins {
   alias(libs.plugins.android.application)
-  alias(libs.plugins.kotlin.android)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.hilt)
@@ -15,7 +14,7 @@ android {
         applicationId = "com.flow.shift"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
+        versionCode = 5
         versionName = "1.0"
     }
 
@@ -126,7 +125,7 @@ dependencies {
   // Firebase
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.analytics)
-  
-  // Coil
-  implementation(libs.coil.compose)
+
+  // Google Play Billing
+  implementation(libs.google.billing)
 }

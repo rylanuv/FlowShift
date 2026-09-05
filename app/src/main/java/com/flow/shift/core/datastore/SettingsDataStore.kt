@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -43,6 +44,7 @@ class SettingsDataStore @Inject constructor(
         val IS_DEVELOPER_MODE_ENABLED = booleanPreferencesKey("is_developer_mode_enabled")
         val PRETEND_SUBSCRIBED = booleanPreferencesKey("pretend_subscribed")
         val BYPASS_DOWNGRADE_WAIT_TIME = booleanPreferencesKey("bypass_downgrade_wait_time")
+        val BYPASS_TARGET_LOCK = booleanPreferencesKey("bypass_target_lock")
 
         // Premium
         val IS_PREMIUM = booleanPreferencesKey("is_premium")
@@ -81,14 +83,20 @@ class SettingsDataStore @Inject constructor(
         // Challenges
         val CHALLENGE_DIFFICULTY = stringPreferencesKey("challenge_difficulty")
         val RANDOMIZE_CHALLENGES = booleanPreferencesKey("randomize_challenges")
+        val ADVANCED_MATH_TOPICS = stringSetPreferencesKey("advanced_math_topics")
         val DAILY_SCREEN_TIME = stringPreferencesKey("daily_screen_time")
         val TARGET_SCREEN_TIME = stringPreferencesKey("target_screen_time")
+        val TARGET_SCREEN_TIME_LOCKED_UNTIL = longPreferencesKey("target_screen_time_locked_until")
         val EASY_MODE_WAIT_SECONDS = intPreferencesKey("easy_mode_wait_seconds")
         val FOCUS_MODE_UNTIL_MILLIS = longPreferencesKey("focus_mode_until_millis")
 
         // Usage Tracking Fix
         val HIGHEST_USAGE_SEEN_TODAY_MILLIS = longPreferencesKey("highest_usage_seen_today_millis")
         val HIGHEST_USAGE_SEEN_DATE_MILLIS = longPreferencesKey("highest_usage_seen_date_millis")
+
+        // Reel Count
+        val REEL_COUNT_TODAY = intPreferencesKey("reel_count_today")
+        val REEL_COUNT_DATE_MILLIS = longPreferencesKey("reel_count_date_millis")
     }
 
     // ── Existing Flows ──
@@ -101,7 +109,9 @@ class SettingsDataStore @Inject constructor(
     }
 
     val blockType: Flow<String> = dataStore.data.map { preferences ->
-        preferences[BLOCK_TYPE] ?: "REELS"
+        val type = preferences[BLOCK_TYPE] ?: "WHOLE_APP"
+        val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
+        if (type == "REELS" && !premium) "WHOLE_APP" else type
     }
 
     val lastDowngradeTimeMillis: Flow<Long> = dataStore.data.map { preferences ->
@@ -152,6 +162,10 @@ class SettingsDataStore @Inject constructor(
         preferences[BYPASS_DOWNGRADE_WAIT_TIME] ?: false
     }
 
+    val bypassTargetLock: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[BYPASS_TARGET_LOCK] ?: false
+    }
+
     // ── Premium Flows ──
     val isPremium: Flow<Boolean> = dataStore.data.map { preferences ->
         val actual = preferences[IS_PREMIUM] ?: false
@@ -193,6 +207,7 @@ class SettingsDataStore @Inject constructor(
     // ── Challenge Flows ──
     val challengeDifficulty: Flow<String> = dataStore.data.map { it[CHALLENGE_DIFFICULTY] ?: "Medium" }
     val randomizeChallenges: Flow<Boolean> = dataStore.data.map { it[RANDOMIZE_CHALLENGES] ?: true }
+    val advancedMathTopics: Flow<Set<String>> = dataStore.data.map { it[ADVANCED_MATH_TOPICS] ?: setOf("POLYNOMIAL") }
 
     // ── Existing Setters ──
     suspend fun setOnboardingCompleted(completed: Boolean) {
@@ -292,6 +307,12 @@ class SettingsDataStore @Inject constructor(
         }
     }
 
+    suspend fun setBypassTargetLock(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BYPASS_TARGET_LOCK] = enabled
+        }
+    }
+
     // ── Premium Setters ──
     suspend fun setIsPremium(isPremium: Boolean) {
         dataStore.edit { preferences ->
@@ -340,12 +361,15 @@ class SettingsDataStore @Inject constructor(
     // ── Challenge Setters ──
     suspend fun setChallengeDifficulty(difficulty: String) { dataStore.edit { it[CHALLENGE_DIFFICULTY] = difficulty } }
     suspend fun setRandomizeChallenges(enabled: Boolean) { dataStore.edit { it[RANDOMIZE_CHALLENGES] = enabled } }
+    suspend fun setAdvancedMathTopics(topics: Set<String>) { dataStore.edit { it[ADVANCED_MATH_TOPICS] = topics } }
 
     // ── Screen Time ──
     val dailyScreenTime: Flow<String> = dataStore.data.map { it[DAILY_SCREEN_TIME] ?: "2-4" }
     val targetScreenTime: Flow<String> = dataStore.data.map { it[TARGET_SCREEN_TIME] ?: "2h" }
+    val targetScreenTimeLockedUntil: Flow<Long> = dataStore.data.map { it[TARGET_SCREEN_TIME_LOCKED_UNTIL] ?: 0L }
     suspend fun setDailyScreenTime(time: String) { dataStore.edit { it[DAILY_SCREEN_TIME] = time } }
     suspend fun setTargetScreenTime(time: String) { dataStore.edit { it[TARGET_SCREEN_TIME] = time } }
+    suspend fun setTargetScreenTimeLockedUntil(timeMillis: Long) { dataStore.edit { it[TARGET_SCREEN_TIME_LOCKED_UNTIL] = timeMillis } }
 
     // ── Focus Mode ──
     val focusModeUntilMillis: Flow<Long> = dataStore.data.map { it[FOCUS_MODE_UNTIL_MILLIS] ?: 0L }
@@ -374,5 +398,32 @@ class SettingsDataStore @Inject constructor(
         }
         return updatedUsage
     }
-}
 
+    // ── Reel Count Persistence ──
+    suspend fun getReelCountToday(startOfDayMillis: Long): Int {
+        val prefs = dataStore.data.first()
+        val savedDate = prefs[REEL_COUNT_DATE_MILLIS] ?: 0L
+        if (savedDate != startOfDayMillis) {
+            return 0
+        }
+        return prefs[REEL_COUNT_TODAY] ?: 0
+    }
+
+    suspend fun incrementReelCount(startOfDayMillis: Long): Int {
+        var updatedCount = 0
+        dataStore.edit { prefs ->
+            val savedDate = prefs[REEL_COUNT_DATE_MILLIS] ?: 0L
+            val savedCount = prefs[REEL_COUNT_TODAY] ?: 0
+            
+            updatedCount = if (savedDate == startOfDayMillis) {
+                savedCount + 1
+            } else {
+                1
+            }
+            
+            prefs[REEL_COUNT_DATE_MILLIS] = startOfDayMillis
+            prefs[REEL_COUNT_TODAY] = updatedCount
+        }
+        return updatedCount
+    }
+}

@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -26,7 +27,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import android.app.Activity
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import com.flow.shift.R
+import com.flow.shift.core.billing.BillingPurchaseState
 import com.flow.shift.theme.*
 
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -36,7 +41,28 @@ fun SubscriptionScreen(
     onNavigateBack: () -> Unit,
     viewModel: SubscriptionViewModel = hiltViewModel()
 ) {
-    var selectedPlan by remember { mutableStateOf("YEARLY") }
+    val context = LocalContext.current
+    val plans by viewModel.plans.collectAsState()
+    val selectedPlanId by viewModel.selectedPlanId.collectAsState()
+    val purchaseState by viewModel.purchaseState.collectAsState()
+
+    LaunchedEffect(purchaseState) {
+        when (val state = purchaseState) {
+            is BillingPurchaseState.Success -> {
+                Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
+                viewModel.resetPurchaseState()
+                onNavigateBack()
+            }
+            is BillingPurchaseState.Error -> {
+                Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
+                viewModel.resetPurchaseState()
+            }
+            is BillingPurchaseState.Cancelled -> {
+                viewModel.resetPurchaseState()
+            }
+            else -> Unit
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
@@ -133,12 +159,13 @@ fun SubscriptionScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            FeatureRow("Discipline & Hardcore Blocking Modes")
-            FeatureRow("Custom Exercise Challenges")
-            FeatureRow("Advanced Uninstall Protection")
-            FeatureRow("Detailed Analytics & Insights")
+            FeatureRow("AI Squats & Pose Tracking Challenges")
+            FeatureRow("Advanced Math Challenges")
+            FeatureRow("Charge Phone Challenge")
+            FeatureRow("Reels Block Only")
+            FeatureRow("All Future Pro Challenges & Modes Included")
         }
 
         Spacer(modifier = Modifier.height(40.dp))
@@ -148,59 +175,75 @@ fun SubscriptionScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            PlanCard(
-                id = "MONTHLY",
-                title = "Monthly",
-                price = "$4.99",
-                period = "/month",
-                selected = selectedPlan == "MONTHLY",
-                onClick = { selectedPlan = "MONTHLY" }
-            )
-            
-            PlanCard(
-                id = "YEARLY",
-                title = "Yearly",
-                price = "$39.99",
-                period = "/year",
-                badgeText = "BEST VALUE",
-                selected = selectedPlan == "YEARLY",
-                onClick = { selectedPlan = "YEARLY" }
-            )
-
-            PlanCard(
-                id = "LIFETIME",
-                title = "Lifetime",
-                price = "$99.99",
-                period = " once",
-                selected = selectedPlan == "LIFETIME",
-                onClick = { selectedPlan = "LIFETIME" }
-            )
+            plans.forEach { plan ->
+                PlanCard(
+                    id = plan.id,
+                    title = plan.title,
+                    price = plan.formattedPrice,
+                    period = plan.period,
+                    badgeText = plan.badgeText,
+                    selected = selectedPlanId == plan.id,
+                    onClick = { viewModel.selectPlan(plan.id) }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(40.dp))
 
+        val isLoading = purchaseState is BillingPurchaseState.Loading
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(PremiumGold)
-                .clickable { 
-                    viewModel.subscribe()
-                    onNavigateBack()
+                .background(if (isLoading) PremiumGold.copy(alpha = 0.6f) else PremiumGold)
+                .clickable(enabled = !isLoading) { 
+                    val activity = context as? Activity
+                    if (activity != null) {
+                        viewModel.startPurchase(activity)
+                    }
                 }
                 .padding(vertical = 18.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "Continue",
-                color = Color.Black,
-                fontFamily = AppFontFamily,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = Color.Black,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text(
+                    text = "Continue",
+                    color = Color.Black,
+                    fontFamily = AppFontFamily,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Restore Purchase",
+            color = if (isLoading) TextMuted else TextSecondary,
+            fontFamily = AppFontFamily,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    enabled = !isLoading,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    viewModel.restorePurchases()
+                }
+                .padding(vertical = 6.dp)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
         
         Text(
             text = "Cancel anytime. Terms & conditions apply.",
@@ -249,17 +292,46 @@ private fun PlanCard(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val borderColor = if (selected) PremiumGold else SurfaceCardBorder
-    val backgroundColor = if (selected) SurfaceCardLight else SurfaceCard
+    val backgroundBrush = if (selected) {
+        Brush.linearGradient(
+            colors = listOf(
+                PremiumGold.copy(alpha = 0.18f),
+                Color(0xFF161616).copy(alpha = 0.55f)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.10f),
+                Color(0xFF121212).copy(alpha = 0.45f)
+            )
+        )
+    }
+
+    val borderBrush = if (selected) {
+        Brush.linearGradient(
+            colors = listOf(
+                PremiumGold,
+                PremiumGold.copy(alpha = 0.65f)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.30f),
+                Color.White.copy(alpha = 0.08f)
+            )
+        )
+    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(backgroundColor)
+            .background(brush = backgroundBrush)
             .border(
                 width = if (selected) 2.dp else 1.dp,
-                color = borderColor,
+                brush = borderBrush,
                 shape = RoundedCornerShape(20.dp)
             )
             .clickable(onClick = onClick)
@@ -284,7 +356,8 @@ private fun PlanCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(PremiumGold.copy(alpha = 0.15f))
+                                .background(PremiumGold.copy(alpha = 0.18f))
+                                .border(1.dp, PremiumGold.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
                                 .padding(horizontal = 6.dp, vertical = 3.dp)
                         ) {
                             Text(
@@ -324,7 +397,7 @@ private fun PlanCard(
                     .clip(CircleShape)
                     .border(
                         width = 2.dp,
-                        color = if (selected) PremiumGold else TextMuted,
+                        color = if (selected) PremiumGold else Color.White.copy(alpha = 0.35f),
                         shape = CircleShape
                     ),
                 contentAlignment = Alignment.Center

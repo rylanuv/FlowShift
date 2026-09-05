@@ -48,6 +48,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
+import androidx.lifecycle.lifecycleScope
+import com.flow.shift.core.billing.BillingRepository
 import com.flow.shift.theme.SurfaceBlack
 
 @AndroidEntryPoint
@@ -55,6 +57,9 @@ class MainActivity : ComponentActivity() {
     
     @Inject
     lateinit var settingsDataStore: SettingsDataStore
+
+    @Inject
+    lateinit var billingRepository: BillingRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,6 +82,13 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A0A)))
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch {
+            billingRepository.initializeAndSyncPurchases()
         }
     }
 }
@@ -250,7 +262,8 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                                 onNavigateToHardcoreModeSettings = { navController.navigate("hardcoreModeSettings") }
                             )
                             1 -> ModesScreen(
-                                showBackground = false
+                                showBackground = false,
+                                onNavigateToDisciplineModeSettings = { navController.navigate("disciplineModeSettings") }
                             )
                             2 -> SettingsScreen(
                                 showBackground = false,
@@ -274,7 +287,8 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
             }
             composable("modes") {
                 ModesScreen(
-                    showBackground = true
+                    showBackground = true,
+                    onNavigateToDisciplineModeSettings = { navController.navigate("disciplineModeSettings") }
                 )
             }
             composable("easyModeSettings") {

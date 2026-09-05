@@ -24,7 +24,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.flow.shift.core.cameravision.CameraScreen
 import com.flow.shift.theme.FlowShiftTheme
 import android.content.Context
 import android.content.pm.PackageManager
@@ -61,6 +60,7 @@ class BlockerActivity : ComponentActivity() {
         val breakDurationMinutes = intent.getIntExtra("BREAK_DURATION_MINUTES", 5)
         val challengeType = intent.getStringExtra("CHALLENGE_TYPE") ?: "PUSHUPS"
         val isHardcoreLock = intent.getBooleanExtra("IS_HARDCORE_LOCK", false)
+        val intentDifficulty = intent.getStringExtra("CHALLENGE_DIFFICULTY")
 
         setContent {
             FlowShiftTheme {
@@ -72,6 +72,9 @@ class BlockerActivity : ComponentActivity() {
                 ) {
                     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                     val currentReps by viewModel.currentReps.collectAsStateWithLifecycle()
+                    val savedDifficulty by viewModel.challengeDifficulty.collectAsStateWithLifecycle()
+                    val currentDifficulty = intentDifficulty ?: savedDifficulty
+                    val advancedMathTopics by viewModel.advancedMathTopics.collectAsStateWithLifecycle()
 
                     if (isHardcoreLock) {
                         HardcoreLockedScreen(
@@ -100,10 +103,12 @@ class BlockerActivity : ComponentActivity() {
                                     )
                                 }
                                 is BlockerUiState.Exercising -> {
-                                    if (challengeType == "MATH") {
-                                        MathChallengeScreen(
+                                    if (challengeType == "ADVANCED_MATH") {
+                                        AdvancedMathChallengeScreen(
                                             requiredProblems = requiredReps,
                                             completedProblems = currentReps,
+                                            difficulty = currentDifficulty,
+                                            topics = advancedMathTopics,
                                             onProblemSolved = { solved ->
                                                 if (solved >= requiredReps) {
                                                     viewModel.completeManualChallenge(targetPackage, requiredReps, breakDurationMinutes)
@@ -112,15 +117,43 @@ class BlockerActivity : ComponentActivity() {
                                                 }
                                             }
                                         )
-                                    } else {
-                                        CameraScreen(
-                                            requiredReps = requiredReps,
-                                            currentReps = currentReps,
-                                            onRepCounted = { reps ->
-                                                viewModel.updateReps(reps, requiredReps, targetPackage, breakDurationMinutes)
+                                    } else if (challengeType == "MATH") {
+                                        MathChallengeScreen(
+                                            requiredProblems = requiredReps,
+                                            completedProblems = currentReps,
+                                            difficulty = currentDifficulty,
+                                            onProblemSolved = { solved ->
+                                                if (solved >= requiredReps) {
+                                                    viewModel.completeManualChallenge(targetPackage, requiredReps, breakDurationMinutes)
+                                                } else {
+                                                    viewModel.updateReps(solved, requiredReps, targetPackage, breakDurationMinutes)
+                                                }
+                                            }
+                                        )
+                                    } else if (challengeType == "SQUATS") {
+                                        SquatChallengeScreen(
+                                            targetSquats = requiredReps,
+                                            currentSquatsInitial = currentReps,
+                                            onSquatDetected = { reps ->
+                                                viewModel.updateReps(reps, requiredReps, targetPackage, breakDurationMinutes) 
                                             },
-                                            onError = {
-                                                // Camera errors leave the user on the challenge screen.
+                                            onSuccess = {
+                                            }
+                                        )
+                                    } else if (challengeType == "CHARGE_PHONE") {
+                                        ChargePhoneChallengeScreen(
+                                            onChargeDetected = {
+                                                viewModel.completeManualChallenge(targetPackage, requiredReps, breakDurationMinutes)
+                                            }
+                                        )
+                                    } else {
+                                        PushUpChallengeScreen(
+                                            targetPushUps = requiredReps,
+                                            currentPushUpsInitial = currentReps,
+                                            onPushUpDetected = { reps ->
+                                                viewModel.updateReps(reps, requiredReps, targetPackage, breakDurationMinutes) 
+                                            },
+                                            onSuccess = {
                                             }
                                         )
                                     }
@@ -274,7 +307,12 @@ fun BlockerSuccessScreen(
             Spacer(modifier = Modifier.height(24.dp))
             
             Text(
-                text = if (challengeType == "MATH") "$requiredAmount Problems Completed!" else "$requiredAmount Push-ups Completed!",
+                text = when (challengeType) {
+                    "MATH", "ADVANCED_MATH" -> "$requiredAmount Problems Completed!"
+                    "SQUATS" -> "$requiredAmount Squats Completed!"
+                    "CHARGE_PHONE" -> "Challenge Completed!"
+                    else -> "$requiredAmount Push-ups Completed!"
+                },
                 color = TextPrimary,
                 fontSize = 24.sp,
                 fontFamily = AppFontFamily,
@@ -298,12 +336,28 @@ fun BlockerSuccessScreen(
 fun MathChallengeScreen(
     requiredProblems: Int,
     completedProblems: Int,
+    difficulty: String = "Medium",
     onProblemSolved: (Int) -> Unit
 ) {
-    val first = (completedProblems * 7 + 13) % 41 + 9
-    val second = (completedProblems * 5 + 17) % 37 + 8
-    var answer by remember(completedProblems) { mutableStateOf("") }
-    var error by remember(completedProblems) { mutableStateOf(false) }
+    val sessionSeed = remember { System.currentTimeMillis() }
+    val problemIndex = completedProblems.coerceAtMost((requiredProblems - 1).coerceAtLeast(0))
+    val problem = remember(problemIndex, difficulty) {
+        MathProblemGenerator.generate(difficulty, problemIndex, sessionSeed)
+    }
+    var answer by remember(problemIndex) { mutableStateOf("") }
+    var error by remember(problemIndex) { mutableStateOf(false) }
+    var isSubmitting by remember(problemIndex) { mutableStateOf(false) }
+
+    val submitAnswer = {
+        if (completedProblems < requiredProblems && !isSubmitting) {
+            if (answer.toIntOrNull() == problem.answer) {
+                isSubmitting = true
+                onProblemSolved(completedProblems + 1)
+            } else {
+                error = true
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -315,52 +369,219 @@ fun MathChallengeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(horizontal = 24.dp)
         ) {
-            Text(
-                text = "${completedProblems.coerceAtMost(requiredProblems)} / $requiredProblems",
-                color = Amber500,
-                fontSize = 16.sp,
-                fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "${completedProblems.coerceAtMost(requiredProblems)} / $requiredProblems",
+                    color = Amber500,
+                    fontSize = 16.sp,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "•",
+                    color = TextSecondary,
+                    fontSize = 16.sp
+                )
+                Text(
+                    text = difficulty.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                    color = ModeStrictAccent,
+                    fontSize = 14.sp,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "$first + $second",
+                text = problem.expression,
                 color = TextPrimary,
-                fontSize = 44.sp,
+                fontSize = if (problem.expression.length > 20) 24.sp else if (problem.expression.length > 12) 32.sp else 42.sp,
                 fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
             OutlinedTextField(
                 value = answer,
                 onValueChange = {
-                    answer = it.filter(Char::isDigit)
-                    error = false
+                    if (!isSubmitting && completedProblems < requiredProblems) {
+                        answer = it.filter(Char::isDigit)
+                        error = false
+                    }
                 },
+                enabled = completedProblems < requiredProblems && !isSubmitting,
                 isError = error,
                 singleLine = true,
-                label = { Text("Answer") },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = { submitAnswer() }
+                ),
+                label = { Text(if (error) "Incorrect, try again" else "Answer") },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = TextPrimary,
                     unfocusedTextColor = TextPrimary,
-                    focusedBorderColor = Amber500,
-                    focusedLabelColor = Amber500
+                    focusedBorderColor = if (error) DangerRed else Amber500,
+                    unfocusedBorderColor = if (error) DangerRed else Color.White.copy(alpha = 0.2f),
+                    focusedLabelColor = if (error) DangerRed else Amber500,
+                    errorBorderColor = DangerRed,
+                    errorLabelColor = DangerRed
                 )
             )
             Spacer(modifier = Modifier.height(20.dp))
             Button(
-                onClick = {
-                    if (answer.toIntOrNull() == first + second) {
-                        onProblemSolved(completedProblems + 1)
-                    } else {
-                        error = true
-                    }
-                },
+                onClick = { submitAnswer() },
+                enabled = completedProblems < requiredProblems && !isSubmitting,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Amber500)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Amber500,
+                    disabledContainerColor = Amber500.copy(alpha = 0.5f)
+                )
+            ) {
+                Text(
+                    text = "Submit",
+                    color = Color.Black,
+                    fontSize = 18.sp,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AdvancedMathChallengeScreen(
+    requiredProblems: Int,
+    completedProblems: Int,
+    difficulty: String = "Medium",
+    topics: Set<String>,
+    onProblemSolved: (Int) -> Unit
+) {
+    val sessionSeed = remember { System.currentTimeMillis() }
+    val problemIndex = completedProblems.coerceAtMost((requiredProblems - 1).coerceAtLeast(0))
+    val problem = remember(problemIndex, difficulty, topics) {
+        val mathDifficulty = try {
+            MathDifficulty.valueOf(difficulty.trim().uppercase())
+        } catch (e: Exception) {
+            MathDifficulty.MEDIUM
+        }
+        val advancedMathTopics = topics.mapNotNull {
+            try { AdvancedMathTopic.valueOf(it) } catch (e: Exception) { null }
+        }.toSet().ifEmpty { setOf(AdvancedMathTopic.POLYNOMIAL) }
+        
+        // Ensure random uses seed combined with problem index so it's consistent if recomposed
+        // AdvancedMathProblemGenerator uses kotlin.random.Random
+        AdvancedMathProblemGenerator.generateProblem(advancedMathTopics, mathDifficulty)
+    }
+    var answer by remember(problemIndex) { mutableStateOf("") }
+    var error by remember(problemIndex) { mutableStateOf(false) }
+    var isSubmitting by remember(problemIndex) { mutableStateOf(false) }
+
+    val submitAnswer = {
+        if (completedProblems < requiredProblems && !isSubmitting) {
+            if (answer.trim() == problem.answer.trim()) {
+                isSubmitting = true
+                onProblemSolved(completedProblems + 1)
+            } else {
+                error = true
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SurfaceCardDarker),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 24.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "${completedProblems.coerceAtMost(requiredProblems)} / $requiredProblems",
+                    color = Amber500,
+                    fontSize = 16.sp,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "•",
+                    color = TextSecondary,
+                    fontSize = 16.sp
+                )
+                Text(
+                    text = difficulty.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } + " Advanced",
+                    color = ModeStrictAccent,
+                    fontSize = 14.sp,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = problem.question,
+                color = TextPrimary,
+                fontSize = if (problem.question.length > 20) 24.sp else 32.sp,
+                fontFamily = AppFontFamily,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            OutlinedTextField(
+                value = answer,
+                onValueChange = {
+                    if (!isSubmitting && completedProblems < requiredProblems) {
+                        // allow negative sign and digits for advanced math
+                        answer = it.filter { char -> char.isDigit() || char == '-' || char == '.' }
+                        error = false
+                    }
+                },
+                enabled = completedProblems < requiredProblems && !isSubmitting,
+                isError = error,
+                singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Text,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = { submitAnswer() }
+                ),
+                label = { Text(if (error) problem.hint.ifEmpty { "Incorrect, try again" } else "Answer") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    focusedBorderColor = if (error) DangerRed else Amber500,
+                    unfocusedBorderColor = if (error) DangerRed else Color.White.copy(alpha = 0.2f),
+                    focusedLabelColor = if (error) DangerRed else Amber500,
+                    errorBorderColor = DangerRed,
+                    errorLabelColor = DangerRed
+                )
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(
+                onClick = { submitAnswer() },
+                enabled = completedProblems < requiredProblems && !isSubmitting,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Amber500,
+                    disabledContainerColor = Amber500.copy(alpha = 0.5f)
+                )
             ) {
                 Text(
                     text = "Submit",

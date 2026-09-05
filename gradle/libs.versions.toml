@@ -13,8 +13,8 @@ junit = "4.13.2"
 kotlin = "2.2.10"
 nav3Core = "1.0.1"
 lifecycleViewmodelNav3 = "2.10.0"
-ksp = "2.3.2"
-hilt = "2.56.2"
+ksp = "2.3.11"
+hilt = "2.60.1"
 room = "2.6.1"
 workManager = "2.10.0"
 camerax = "1.5.0-alpha01"
@@ -23,7 +23,7 @@ datastore = "1.1.1"
 googleFonts = "1.7.6"
 googleServices = "4.4.2"
 firebaseBom = "33.1.2"
-coil = "2.6.0"
+billing = "7.1.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -83,7 +83,9 @@ compose-ui-text-google-fonts = { group = "androidx.compose.ui", name = "ui-text-
 # Firebase
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
-coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+
+# Google Play Billing
+google-billing = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }

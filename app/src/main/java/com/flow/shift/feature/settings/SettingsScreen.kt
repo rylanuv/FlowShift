@@ -39,6 +39,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import kotlin.math.roundToInt
 import androidx.compose.ui.layout.layout
+import android.widget.Toast
+import java.text.DateFormat
+import java.util.Date
+import java.util.Calendar
+import androidx.compose.ui.zIndex
 
 @Composable
 fun SettingsScreen(
@@ -54,6 +59,8 @@ fun SettingsScreen(
     val currentMode = com.flow.shift.feature.modes.BlockingMode.fromString(blockingModeStr)
     
     var showTargetScreenTimeDialog by remember { mutableStateOf(false) }
+    var showLockTargetDialog by remember { mutableStateOf(false) }
+    var showReelCountExplainerDialog by remember { mutableStateOf(false) }
 
     val protectedAppCount = state.blockedApps.size
     val enabledProtectionSignals = listOf(
@@ -188,9 +195,19 @@ fun SettingsScreen(
             subtitle = "What to block in apps"
         ) {
             SegmentedControl(
-                options = listOf("Reels Only" to Icons.Default.VideoLibrary, "Whole App" to Icons.Default.Apps),
+                options = listOf("Reels Only" to if (isPremium) Icons.Default.VideoLibrary else Icons.Default.Lock, "Whole App" to Icons.Default.Apps),
                 selectedOption = if (state.blockType == "REELS") "Reels Only" else "Whole App",
-                onOptionSelected = { if (it == "Reels Only") viewModel.setBlockType("REELS") else viewModel.setBlockType("WHOLE_APP") }
+                onOptionSelected = { 
+                    if (it == "Reels Only") {
+                        if (isPremium) {
+                            viewModel.setBlockType("REELS")
+                        } else {
+                            onNavigateToSubscription()
+                        }
+                    } else {
+                        viewModel.setBlockType("WHOLE_APP")
+                    }
+                }
             )
             Spacer(modifier = Modifier.height(16.dp))
             SettingsToggleRow(
@@ -198,7 +215,13 @@ fun SettingsScreen(
                 label = "Show Reel Count",
                 checked = state.appearance.showReelCount,
                 subtitle = "Display reel count on top of screen",
-                onCheckedChange = { viewModel.setShowReelCount(it) }
+                onCheckedChange = { isChecked -> 
+                    if (isChecked) {
+                        showReelCountExplainerDialog = true
+                    } else {
+                        viewModel.setShowReelCount(false)
+                    }
+                }
             )
         }
 
@@ -216,7 +239,33 @@ fun SettingsScreen(
                 label = "Daily Target",
                 value = state.targetScreenTime,
                 valueColor = Amber500,
-                onClick = { showTargetScreenTimeDialog = true }
+                onClick = {
+                    if (System.currentTimeMillis() < state.targetScreenTimeLockedUntil && !state.bypassTargetLock) {
+                        Toast.makeText(context, "Target is locked and cannot be adjusted", Toast.LENGTH_SHORT).show()
+                    } else {
+                        showTargetScreenTimeDialog = true
+                    }
+                }
+            )
+            SettingsToggleRow(
+                icon = Icons.Default.Lock,
+                label = "Lock Target",
+                checked = state.targetScreenTimeLockedUntil > System.currentTimeMillis(),
+                subtitle = if (state.targetScreenTimeLockedUntil > System.currentTimeMillis()) {
+                    if (state.targetScreenTimeLockedUntil == Long.MAX_VALUE) "Locked forever"
+                    else "Locked until ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(state.targetScreenTimeLockedUntil))}"
+                } else "Prevent adjusting daily target",
+                onCheckedChange = { isChecked ->
+                    if (isChecked) {
+                        showLockTargetDialog = true
+                    } else {
+                        if (System.currentTimeMillis() < state.targetScreenTimeLockedUntil && !state.bypassTargetLock) {
+                            Toast.makeText(context, "Cannot unlock before the time expires", Toast.LENGTH_SHORT).show()
+                        } else {
+                            viewModel.setTargetScreenTimeLockedUntil(0L)
+                        }
+                    }
+                }
             )
         }
 
@@ -243,54 +292,167 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             icon = Icons.Default.WorkspacePremium,
             title = "PREMIUM",
-            subtitle = "Unlock your full potential",
-            titleColor = PremiumGold,
-            iconColor = PremiumGold
+            subtitle = if (isPremium) "Your Pro membership is active" else "Unlock your full potential",
+            titleColor = if (isPremium) PremiumGold else Amber500,
+            iconColor = if (isPremium) PremiumGold else Amber500
         ) {
-            // Premium badge
+            // Subscription status card
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(
-                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFF2C220B), // Dark gold tint
-                                Color(0xFF141005)
+                        brush = if (isPremium) {
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF2C220B), // Warm rich gold tint
+                                    Color(0xFF141005)
+                                )
                             )
-                        )
+                        } else {
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    SurfaceCardLight,
+                                    SurfaceCardDarker
+                                )
+                            )
+                        }
                     )
-                    .border(1.dp, PremiumGold.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                    .border(
+                        1.dp,
+                        if (isPremium) PremiumGold.copy(alpha = 0.5f) else SurfaceCardBorder,
+                        RoundedCornerShape(16.dp)
+                    )
+                    .clickable(
+                        enabled = !isPremium,
+                        onClick = onNavigateToSubscription
+                    )
                     .padding(16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        text = "FlowShift Pro",
-                        color = PremiumGold,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Text(
-                        text = if (isPremium) "Lifetime Access" else "Upgrade Now",
-                        color = PremiumGold.copy(alpha = 0.7f),
-                        fontSize = 12.sp
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(PremiumGold.copy(alpha = 0.15f))
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (isPremium) "UNLOCKED" else "UNLOCK PRO",
-                        color = PremiumGold,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isPremium) PremiumGold.copy(alpha = 0.15f)
+                                else Color.White.copy(alpha = 0.05f)
+                            )
+                            .border(
+                                1.dp,
+                                if (isPremium) PremiumGold.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.08f),
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPremium) Icons.Default.WorkspacePremium else Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = if (isPremium) PremiumGold else TextMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(
+                            text = if (isPremium) "FlowShift Pro" else "Free Plan",
+                            color = if (isPremium) PremiumGold else TextPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = AppFontFamily
+                        )
+                        if (!isPremium) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Row(verticalAlignment = Alignment.Top) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 5.dp)
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(TextMuted.copy(alpha = 0.5f))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Not Subscribed • Tap to Upgrade",
+                                    color = TextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = AppFontFamily,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                if (isPremium) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(StatusGreen.copy(alpha = 0.15f))
+                            .border(1.dp, StatusGreen.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = StatusGreen,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "ACTIVE",
+                                color = StatusGreen,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.6.sp,
+                                fontFamily = AppFontFamily
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(Amber500, Color(0xFFFBBF24))
+                                )
+                            )
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "UPGRADE",
+                                color = Color.Black,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 0.6.sp,
+                                fontFamily = AppFontFamily
+                            )
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -408,6 +570,22 @@ fun SettingsScreen(
             )
         }
         
+        if (showReelCountExplainerDialog) {
+            ReelCountExplainerDialog(
+                onDismiss = { showReelCountExplainerDialog = false },
+                onEnableClick = {
+                    if (isPremium) {
+                        viewModel.setShowReelCount(true)
+                        showReelCountExplainerDialog = false
+                    } else {
+                        Toast.makeText(context, "Available for Premium users only", Toast.LENGTH_SHORT).show()
+                        onNavigateToSubscription()
+                        showReelCountExplainerDialog = false
+                    }
+                }
+            )
+        }
+        
         if (showTargetScreenTimeDialog) {
             TargetScreenTimeDialog(
                 currentValue = state.targetScreenTime,
@@ -415,6 +593,16 @@ fun SettingsScreen(
                 onConfirm = { time ->
                     viewModel.setTargetScreenTime(time)
                     showTargetScreenTimeDialog = false
+                }
+            )
+        }
+        
+        if (showLockTargetDialog) {
+            LockTargetDurationDialog(
+                onDismiss = { showLockTargetDialog = false },
+                onConfirm = { durationMillis ->
+                    viewModel.setTargetScreenTimeLockedUntil(durationMillis)
+                    showLockTargetDialog = false
                 }
             )
         }
@@ -604,6 +792,81 @@ private fun TargetScreenTimeDialog(
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(formattedTime) }) {
+                Text("Save", color = Amber500, fontFamily = AppFontFamily)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary, fontFamily = AppFontFamily)
+            }
+        },
+        containerColor = SurfaceBlack,
+        titleContentColor = TextPrimary
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LockTargetDurationDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (Long) -> Unit
+) {
+    val options = listOf(
+        "1 day" to 1,
+        "3 days" to 3,
+        "1 week" to 7,
+        "1 month" to 30,
+        "6 months" to 180,
+        "1 year" to 365,
+        "Forever" to -1
+    )
+    var selectedOption by remember { mutableStateOf(options.first().second) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Lock Target", fontFamily = AppFontFamily) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = "Select how long to lock your daily target. You will not be able to adjust it until this time expires.",
+                    color = TextSecondary,
+                    fontSize = 14.sp,
+                    fontFamily = AppFontFamily
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                options.forEach { (label, value) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedOption = value }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedOption == value,
+                            onClick = { selectedOption = value },
+                            colors = RadioButtonDefaults.colors(selectedColor = Amber500, unselectedColor = TextMuted)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = label,
+                            color = TextPrimary,
+                            fontFamily = AppFontFamily,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val durationMillis = if (selectedOption == -1) {
+                    Long.MAX_VALUE
+                } else {
+                    System.currentTimeMillis() + selectedOption * 24L * 60L * 60L * 1000L
+                }
+                onConfirm(durationMillis)
+            }) {
                 Text("Save", color = Amber500, fontFamily = AppFontFamily)
             }
         },
@@ -898,7 +1161,71 @@ private fun ChallengeCard(
     }
 }
 
-
-
-
-
+@Composable
+private fun ReelCountExplainerDialog(
+    onDismiss: () -> Unit,
+    onEnableClick: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceCard,
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary,
+        title = { Text("Reel Count Badge", fontFamily = AppFontFamily) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Visual explainer
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .background(color = SurfaceCardDarker, shape = RoundedCornerShape(12.dp))
+                        .padding(8.dp),
+                    contentAlignment = Alignment.TopEnd
+                ) {
+                    // Badge
+                    Box(
+                        modifier = Modifier
+                            .background(color = DangerRed, shape = CircleShape)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .zIndex(1f)
+                    ) {
+                        Text("142", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    // A simple rect to represent a reel in the app
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 16.dp, end = 16.dp)
+                            .background(color = SurfaceCard, shape = RoundedCornerShape(8.dp))
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "A persistent badge will appear on your screen showing exactly how many reels or shorts you've scrolled through. This helps break the trance by bringing your awareness back to the present.",
+                    fontFamily = AppFontFamily,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onEnableClick,
+                colors = ButtonDefaults.buttonColors(containerColor = Amber500, contentColor = Color.White)
+            ) {
+                Text("Enable")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = TextMuted)
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
+}

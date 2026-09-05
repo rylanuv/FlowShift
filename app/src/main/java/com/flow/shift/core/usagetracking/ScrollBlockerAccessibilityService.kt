@@ -367,29 +367,37 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                 }
                 
                 val shortsResult = isShortFormContentPresent(rootNode, packageName)
-                if (shortsResult.isPresent) {
+                if (shortsResult.isInSafeContext) {
+                    lastShortsDetectionAtMillis = 0L // Cancel the grace period for scroll counting
+                } else if (shortsResult.isPresent) {
                     lastShortsDetectionAtMillis = System.currentTimeMillis()
                 }
-                val recentlyInShorts = (System.currentTimeMillis() - lastShortsDetectionAtMillis) < 5000L
+                
+                // Grace period is strictly for keeping the scroll counter active during transitions
+                val recentlyInShorts = (System.currentTimeMillis() - lastShortsDetectionAtMillis) < 3000L
                 isCurrentlyInShorts = shortsResult.isPresent || recentlyInShorts
 
-                if (isCurrentlyInShorts) {
-                    if (isShortFormSupportedApp(packageName)) {
-                        val showReelCount = settingsDataStore.showReelCount.first()
-                        if (showReelCount) {
-                            val startOfDay = java.util.Calendar.getInstance().apply {
-                                timeInMillis = System.currentTimeMillis()
-                                set(java.util.Calendar.HOUR_OF_DAY, 0)
-                                set(java.util.Calendar.MINUTE, 0)
-                                set(java.util.Calendar.SECOND, 0)
-                                set(java.util.Calendar.MILLISECOND, 0)
-                            }.timeInMillis
-                            reelCount = settingsDataStore.getReelCountToday(startOfDay)
-                        } else {
-                            updateOverlayOnMainThread(false)
-                        }
+                // Ensure we update overlay visibility if shorts state changes
+                if (isShortFormSupportedApp(packageName)) {
+                    val showReelCount = settingsDataStore.showReelCount.first()
+                    if (isCurrentlyInShorts && showReelCount) {
+                        val startOfDay = java.util.Calendar.getInstance().apply {
+                            timeInMillis = System.currentTimeMillis()
+                            set(java.util.Calendar.HOUR_OF_DAY, 0)
+                            set(java.util.Calendar.MINUTE, 0)
+                            set(java.util.Calendar.SECOND, 0)
+                            set(java.util.Calendar.MILLISECOND, 0)
+                        }.timeInMillis
+                        reelCount = settingsDataStore.getReelCountToday(startOfDay)
+                    } else if (!isCurrentlyInShorts) {
+                        updateOverlayOnMainThread(false)
                     }
+                }
 
+                // STRICT BLOCKING LOGIC: Only block if we actively see the reel right now.
+                // Do NOT use the grace period for blocking, otherwise leaving a reel 
+                // will falsely trigger a block on the new tab.
+                if (shortsResult.isPresent && !shortsResult.isInSafeContext) {
                     if (shouldBlockApp(packageName)) {
                         
                         var homeAction = HomeTabAction.NOT_FOUND
@@ -414,10 +422,6 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                             performGlobalAction(GLOBAL_ACTION_BACK)
                             recordIntervention(packageName)
                         }
-                    }
-                } else {
-                    if (isShortFormSupportedApp(packageName)) {
-                        updateOverlayOnMainThread(false)
                     }
                 }
             } else {
@@ -534,7 +538,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         return spannable
     }
 
-    private data class ShortsDetectionResult(val isPresent: Boolean, val isFullScreen: Boolean)
+    private data class ShortsDetectionResult(val isPresent: Boolean, val isFullScreen: Boolean, val isInSafeContext: Boolean = false)
 
     private fun isShortFormContentPresent(rootNode: AccessibilityNodeInfo, packageName: String): ShortsDetectionResult {
         val queue = java.util.ArrayDeque<AccessibilityNodeInfo>()
@@ -542,113 +546,129 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         var count = 0
         var found = false
         var isFullScreen = false
+        var isInSafeContext = false
         
         while (queue.isNotEmpty() && count < NODE_SCAN_LIMIT) {
             val node = queue.removeFirst()
             count++
             
-            var isShorts = false
-            
-            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-            val id = node.viewIdResourceName?.toString()?.lowercase() ?: ""
-            val text = node.text?.toString()?.lowercase() ?: ""
-            
-            // 1. Check for selected short-form tabs
-            if (node.isSelected) {
-                if (desc == "reels" || desc == "shorts" || desc == "spotlight" || desc == "for you") {
-                    isShorts = true
-                    isFullScreen = true
+            // Only consider nodes that are currently visible on the screen.
+            // This is the critical fix for "background" Reels continuing to block 
+            // when DMs or Profile fragments open on top.
+            if (node.isVisibleToUser) {
+                val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+                val id = node.viewIdResourceName?.toString()?.lowercase() ?: ""
+                val text = node.text?.toString()?.lowercase() ?: ""
+                
+                // 1. Check for Safe Contexts (Negative Markers)
+                // If we detect we are in DMs, Profile, Settings, etc., we abort immediately.
+                if (isSafeContext(packageName, text, desc, id)) {
+                    isInSafeContext = true
+                    node.recycle()
+                    break // Stop searching immediately, we are safe.
                 }
-            }
-            
-            // 2. Check for specific short-form video player containers
-            if (!isShorts && id.isNotEmpty()) {
-                if (id.contains("clips_video_container") || 
-                    id.contains("shorts_player") || 
-                    id.contains("reel_viewer") ||
-                    id.contains("reels_viewer") ||
-                    id.contains("tiktok_video") ||
-                    (packageName == "com.zhiliaoapp.musically" && id.contains("vertical_view_pager")) ||
-                    (packageName == "com.google.android.youtube" && (
-                        id.contains("reel_recycler") ||
-                        id.contains("reel_player") ||
-                        id.contains("reel_watch") ||
-                        id.contains("reel_video") ||
-                        id.contains("reel_container") ||
-                        id.contains("reel_holder") ||
-                        id.contains("reel_body") ||
-                        id.contains("reel_page") ||
-                        id.contains("reel_item") ||
-                        id.contains("shorts_container") ||
-                        id.contains("shorts_player") ||
-                        id.contains("shorts_root") ||
-                        id.contains("shorts_view_pager") ||
-                        id.contains("reel_player_overlay") ||
-                        id.contains("reel_player_page") ||
-                        id.contains("reel_watch_pager")
-                    )) ||
-                    (packageName == "com.facebook.katana" && (
-                        id.contains("fb_shorts") || 
-                        id.contains("reels_video") ||
-                        id.contains("reel_video") ||
-                        id.contains("reels_playback") ||
-                        id.contains("short_video")
-                    ))
-                ) {
-                    isShorts = true
-                    // Determine if it's explicitly full-screen
-                    if (packageName == "com.google.android.youtube") {
-                        if (id.contains("reel_recycler") || id.contains("reel_watch_pager") || id.contains("reel_player_page") || id.contains("shorts_player")) {
+
+                var isShorts = false
+                
+                // 2. Check for selected short-form tabs at the bottom navigation
+                if (node.isSelected && (desc.contains("reels") || desc.contains("shorts") || desc.contains("spotlight") || desc.contains("for you"))) {
+                    val windowBounds = android.graphics.Rect()
+                    rootNode.getBoundsInScreen(windowBounds)
+                    val screenHeight = windowBounds.height()
+                    if (screenHeight > 0) {
+                        val tabBounds = android.graphics.Rect()
+                        node.getBoundsInScreen(tabBounds)
+                        // Must be in the bottom 25% of the screen (avoids profile tab false positives)
+                        if (tabBounds.bottom > screenHeight * 0.75f) {
+                            isShorts = true
                             isFullScreen = true
                         }
-                    } else if (packageName == "com.instagram.android") {
-                        if (id.contains("clips_video_container") || id.contains("reel_viewer")) {
-                            isFullScreen = true
-                        }
-                    } else if (packageName == "com.zhiliaoapp.musically") {
-                        isFullScreen = true // TikTok is always full screen
                     }
                 }
-            }
-
-            // 3. Check for specific content descriptions that indicate video playing
-            if (!isShorts && desc.isNotEmpty()) {
-                if (desc.contains("short video") || desc.contains("tiktok video")) {
-                    isShorts = true
-                    isFullScreen = true
+                
+                // 3. Check for specific short-form video player containers
+                if (!isShorts && id.isNotEmpty()) {
+                    if (isShortsContainerId(packageName, id)) {
+                        val windowBounds = android.graphics.Rect()
+                        rootNode.getBoundsInScreen(windowBounds)
+                        val screenHeight = windowBounds.height()
+                        
+                        if (screenHeight > 0) {
+                            val nodeBounds = android.graphics.Rect()
+                            node.getBoundsInScreen(nodeBounds)
+                            
+                            // A full screen reel takes up most of the screen vertically.
+                            // If it's less than 65%, it's likely a grid item or shelf preview.
+                            // On Instagram, opening comments shrinks the video to ~50% height, so we use a 40% threshold.
+                            val minHeightRatio = if (packageName == "com.instagram.android") 0.40f else 0.65f
+                            
+                            if (nodeBounds.height() > screenHeight * minHeightRatio) {
+                                isShorts = true
+                                isFullScreen = true
+                            }
+                        }
+                    }
                 }
-                // YouTube Shorts content descriptions
-                if (!isShorts && packageName == "com.google.android.youtube") {
-                    if (desc.contains("dislike this video") ||
-                        desc.contains("like this video") ||
-                        desc.contains("remix this video") ||
-                        desc == "remix" ||
-                        desc.contains("sound used in this short") ||
-                        desc.contains("use this sound") ||
-                        desc.contains("shorts sound") ||
-                        desc.contains("search shorts") ||
-                        desc.contains("shorts camera")
-                    ) {
+                
+                // 4. Check for specific content descriptions and texts
+                if (!isShorts) {
+                    if (desc.contains("short video") || desc.contains("tiktok video")) {
                         isShorts = true
                         isFullScreen = true
                     }
-                }
-                // Relaxed text checks specifically for Facebook since its view IDs are heavily obfuscated
-                if (!isShorts && packageName == "com.facebook.katana") {
-                    val isExactReel = desc == "reels" || desc == "reel"
-                    if (isExactReel) {
-                        isShorts = true
-                        // Note: We deliberately do NOT set isFullScreen = true here to avoid
-                        // false positives with Reels shelves on the Facebook home feed.
+                    if (packageName == "com.google.android.youtube") {
+                        if (desc.contains("dislike this video") ||
+                            desc.contains("like this video") ||
+                            desc.contains("remix this video") ||
+                            desc == "remix" ||
+                            desc.contains("sound used in this short") ||
+                            desc.contains("use this sound") ||
+                            desc.contains("shorts sound") ||
+                            desc.contains("search shorts") ||
+                            desc.contains("shorts camera")
+                        ) {
+                            isShorts = true
+                            isFullScreen = true
+                        }
+                    }
+                    if (packageName == "com.facebook.katana") {
+                        if (desc == "reels" || desc == "reel") {
+                            isShorts = true
+                        }
+                    }
+                    if (packageName == "com.instagram.android" && text == "reels") {
+                        // Fallback: When opening a Reel from the Home feed, the title at the top is often "Reels".
+                        val windowBounds = android.graphics.Rect()
+                        rootNode.getBoundsInScreen(windowBounds)
+                        if (windowBounds.height() > 0) {
+                            val nodeBounds = android.graphics.Rect()
+                            node.getBoundsInScreen(nodeBounds)
+                            // If the word "Reels" is acting as a title at the top 15% of the screen
+                            if (nodeBounds.top < windowBounds.height() * 0.15f) {
+                                isShorts = true
+                                isFullScreen = true
+                            }
+                        }
+                    }
+                    if (packageName == "com.snapchat.android" && (text == "spotlight" || desc.contains("spotlight"))) {
+                        val windowBounds = android.graphics.Rect()
+                        rootNode.getBoundsInScreen(windowBounds)
+                        if (windowBounds.height() > 0) {
+                            val nodeBounds = android.graphics.Rect()
+                            node.getBoundsInScreen(nodeBounds)
+                            if (nodeBounds.top < windowBounds.height() * 0.15f) {
+                                isShorts = true
+                                isFullScreen = true
+                            }
+                        }
                     }
                 }
-            }
-            
-            if (isShorts) {
-                found = true
-                if (isFullScreen) {
-                    node.recycle()
-                    break
+                
+                if (isShorts) {
+                    found = true
+                    // We don't break immediately here because we want to exhaust the 
+                    // tree slightly more in case a safe context (like a bottom sheet DM) 
+                    // is layered over the Reels container.
                 }
             }
             
@@ -662,11 +682,74 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             node.recycle()
         }
         
-        // Recycle any remaining nodes in the queue to prevent memory leaks
         while (queue.isNotEmpty()) {
             queue.removeFirst().recycle()
         }
-        return ShortsDetectionResult(found, isFullScreen)
+        
+        if (isInSafeContext) {
+            return ShortsDetectionResult(false, false, true)
+        }
+        
+        return ShortsDetectionResult(found, isFullScreen, false)
+    }
+
+    private fun isShortsContainerId(packageName: String, id: String): Boolean {
+        if (packageName == "com.instagram.android") {
+            return id.contains("clips_video_container") || 
+                   id.contains("reel_viewer") ||
+                   id.contains("clips_viewer") ||
+                   id.contains("reels_viewer") ||
+                   id.contains("clips_item") ||
+                   id.contains("reel_item") ||
+                   id.contains("clips_swipe")
+        }
+        if (packageName == "com.google.android.youtube") {
+            return id.contains("reel_recycler") ||
+                   id.contains("reel_player") ||
+                   id.contains("reel_watch") ||
+                   id.contains("shorts_container") ||
+                   id.contains("shorts_player") ||
+                   id.contains("shorts_view_pager") ||
+                   id.contains("reel_player_page") ||
+                   id.contains("reel_watch_pager")
+        }
+        if (packageName == "com.facebook.katana") {
+            return id.contains("fb_shorts") || 
+                   id.contains("reels_video") ||
+                   id.contains("reels_playback") ||
+                   id.contains("short_video")
+        }
+        if (packageName == "com.zhiliaoapp.musically") {
+            return id.contains("vertical_view_pager")
+        }
+        if (packageName == "com.snapchat.android") {
+            return id.contains("spotlight") || id.contains("content_container")
+        }
+        return id.contains("reel") || id.contains("shorts") || id.contains("clips") || id.contains("spotlight")
+    }
+
+    private fun isSafeContext(packageName: String, text: String, desc: String, id: String): Boolean {
+        
+        if (packageName == "com.instagram.android") {
+            if (text == "message..." || desc == "message...") return true
+            if (text == "direct" && id.contains("title")) return true
+            if (text == "edit profile" || desc == "edit profile") return true
+            if (text == "share profile" || desc == "share profile") return true
+            if (text == "settings and activity" || desc == "settings and activity") return true
+            if (text == "type a message..." || desc == "type a message...") return true
+            if (text == "new message" || desc == "new message") return true
+            if (id.contains("direct_star") || id.contains("thread_title") || id.contains("message_content")) return true
+            if (id.contains("tab_bar") && desc.contains("profile tab, selected")) return true
+        }
+        
+        if (packageName == "com.google.android.youtube") {
+            if (text == "notifications" || desc == "notifications") return true
+            if (text == "search youtube" || desc == "search youtube") return true
+            if (text == "history" && id.contains("title")) return true
+            if (id.contains("bottom_bar") && desc.contains("you, selected")) return true // "You" tab
+        }
+        
+        return false
     }
 
     private fun isAppUninstallAttempt(rootNode: AccessibilityNodeInfo): Boolean {

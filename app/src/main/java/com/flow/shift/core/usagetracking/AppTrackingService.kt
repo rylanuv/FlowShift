@@ -159,6 +159,17 @@ class AppTrackingService : Service() {
     private suspend fun checkIfAppIsBlocked(packageName: String) {
         val blockedApp = blockedAppDao.getBlockedApp(packageName)
         if (blockedApp != null && blockedApp.isEnabled) {
+            val blockType = settingsDataStore.blockType.first()
+            val isShortFormSupportedApp = packageName == "com.instagram.android" || 
+                packageName == "com.google.android.youtube" || 
+                packageName == "com.facebook.katana" ||
+                packageName == "com.zhiliaoapp.musically" ||
+                packageName == "com.snapchat.android"
+
+            if (blockType == "REELS" && isShortFormSupportedApp) {
+                return
+            }
+
             val focusModeUntilMillis = settingsDataStore.focusModeUntilMillis.first()
             val currentTime = System.currentTimeMillis()
             val isFocusModeActive = focusModeUntilMillis > currentTime

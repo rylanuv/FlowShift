@@ -110,9 +110,10 @@ class SettingsViewModel @Inject constructor(
                 settingsDataStore.challengeDifficulty,
                 settingsDataStore.randomizeChallenges,
                 settingsDataStore.strictChallengeType,
-                settingsDataStore.strictChallengeAmount
-            ) { difficulty, randomize, challengeType, challengeAmount ->
-                ChallengeState(difficulty, randomize, challengeType, challengeAmount)
+                settingsDataStore.strictChallengeAmount,
+                settingsDataStore.advancedMathTopics
+            ) { difficulty, randomize, challengeType, challengeAmount, advancedMathTopics ->
+                ChallengeState(difficulty, randomize, challengeType, challengeAmount, advancedMathTopics)
             }
         ) { appearance, challenges -> appearance to challenges }
     ) { fourState, (appearance, challenges) ->
@@ -124,19 +125,23 @@ class SettingsViewModel @Inject constructor(
     .combine(
         combine(
             settingsDataStore.blockType,
-            settingsDataStore.targetScreenTime
-        ) { blockType, targetScreenTime -> blockType to targetScreenTime }
-    ) { sevenState, (blockType, targetScreenTime) ->
-        EightState(sevenState, blockType, targetScreenTime)
+            settingsDataStore.targetScreenTime,
+            settingsDataStore.targetScreenTimeLockedUntil
+        ) { blockType, targetScreenTime, targetScreenTimeLockedUntil -> Triple(blockType, targetScreenTime, targetScreenTimeLockedUntil) }
+    ) { sevenState, (blockType, targetScreenTime, targetScreenTimeLockedUntil) ->
+        EightState(sevenState, blockType, targetScreenTime, targetScreenTimeLockedUntil)
     }
     .combine(
         combine(
             settingsDataStore.isDeveloperModeEnabled,
             settingsDataStore.pretendSubscribed,
-            settingsDataStore.bypassDowngradeWaitTime
-        ) { devMode, pretendSubscribed, bypassDowngradeWaitTime -> Triple(devMode, pretendSubscribed, bypassDowngradeWaitTime) }
-    ) { eightState, (devMode, pretendSubscribed, bypassDowngradeWaitTime) ->
-        NineState(eightState, devMode, pretendSubscribed, bypassDowngradeWaitTime)
+            settingsDataStore.bypassDowngradeWaitTime,
+            settingsDataStore.bypassTargetLock
+        ) { devMode, pretendSubscribed, bypassDowngradeWaitTime, bypassTargetLock -> 
+            NineStateContent(devMode, pretendSubscribed, bypassDowngradeWaitTime, bypassTargetLock) 
+        }
+    ) { eightState, nineContent ->
+        NineState(eightState, nineContent.devMode, nineContent.pretendSubscribed, nineContent.bypassDowngradeWaitTime, nineContent.bypassTargetLock)
     }
     .combine(gamificationFlow) { nineState, gamification ->
         SettingsUiState(
@@ -149,12 +154,14 @@ class SettingsViewModel @Inject constructor(
             blockedApps = nineState.eightState.sevenState.blockedApps,
             blockType = nineState.eightState.blockType,
             targetScreenTime = nineState.eightState.targetScreenTime,
+            targetScreenTimeLockedUntil = nineState.eightState.targetScreenTimeLockedUntil,
             streakDays = gamification.currentStreakDays,
             totalXp = gamification.totalXp,
             currentLevel = gamification.currentLevel,
             isDeveloperModeEnabled = nineState.isDeveloperModeEnabled,
             pretendSubscribed = nineState.pretendSubscribed,
-            bypassDowngradeWaitTime = nineState.bypassDowngradeWaitTime
+            bypassDowngradeWaitTime = nineState.bypassDowngradeWaitTime,
+            bypassTargetLock = nineState.bypassTargetLock
         )
     }
     .stateIn(
@@ -186,10 +193,16 @@ class SettingsViewModel @Inject constructor(
             settingsDataStore.setBypassDowngradeWaitTime(enabled)
         }
     }
+    fun setBypassTargetLock(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.setBypassTargetLock(enabled)
+        }
+    }
 
     // --- Screen Time ---
     fun setDailyScreenTime(time: String) = launch { settingsDataStore.setDailyScreenTime(time) }
     fun setTargetScreenTime(time: String) = launch { settingsDataStore.setTargetScreenTime(time) }
+    fun setTargetScreenTimeLockedUntil(timeMillis: Long) = launch { settingsDataStore.setTargetScreenTimeLockedUntil(timeMillis) }
 
     // ── Break Rules ──
     fun setRequireChallengeForBreak(enabled: Boolean) = launch { settingsDataStore.setRequireChallengeForBreak(enabled) }
@@ -213,6 +226,7 @@ class SettingsViewModel @Inject constructor(
     fun setRandomizeChallenges(enabled: Boolean) = launch { settingsDataStore.setRandomizeChallenges(enabled) }
     fun setChallengeType(type: String) = launch { settingsDataStore.setStrictChallengeType(type) }
     fun setChallengeAmount(amount: Int) = launch { settingsDataStore.setStrictChallengeAmount(amount) }
+    fun setAdvancedMathTopics(topics: Set<String>) = launch { settingsDataStore.setAdvancedMathTopics(topics) }
 
     // ── App Management ──
     fun toggleBlockedApp(packageName: String, enabled: Boolean) {
@@ -254,14 +268,23 @@ private data class SevenState(
 private data class EightState(
     val sevenState: SevenState,
     val blockType: String,
-    val targetScreenTime: String
+    val targetScreenTime: String,
+    val targetScreenTimeLockedUntil: Long
+)
+
+private data class NineStateContent(
+    val devMode: Boolean,
+    val pretendSubscribed: Boolean,
+    val bypassDowngradeWaitTime: Boolean,
+    val bypassTargetLock: Boolean
 )
 
 private data class NineState(
     val eightState: EightState,
     val isDeveloperModeEnabled: Boolean,
     val pretendSubscribed: Boolean,
-    val bypassDowngradeWaitTime: Boolean
+    val bypassDowngradeWaitTime: Boolean,
+    val bypassTargetLock: Boolean
 )
 
 // ── UI State ──
@@ -273,14 +296,16 @@ data class SettingsUiState(
     val appearance: AppearanceState = AppearanceState(),
     val challenges: ChallengeState = ChallengeState(),
     val blockedApps: List<BlockedAppInfo> = emptyList(),
-    val blockType: String = "REELS",
+    val blockType: String = "WHOLE_APP",
     val targetScreenTime: String = "2h",
+    val targetScreenTimeLockedUntil: Long = 0L,
     val streakDays: Int = 0,
     val totalXp: Int = 0,
     val currentLevel: Int = 1,
     val isDeveloperModeEnabled: Boolean = false,
     val pretendSubscribed: Boolean = false,
-    val bypassDowngradeWaitTime: Boolean = false
+    val bypassDowngradeWaitTime: Boolean = false,
+    val bypassTargetLock: Boolean = false
 )
 
 data class ProtectionState(
@@ -323,7 +348,8 @@ data class ChallengeState(
     val difficulty: String = "Medium",
     val randomizeChallenges: Boolean = true,
     val challengeType: String = "PUSHUPS",
-    val challengeAmount: Int = 15
+    val challengeAmount: Int = 15,
+    val advancedMathTopics: Set<String> = setOf("POLYNOMIAL")
 )
 
 data class BlockedAppInfo(

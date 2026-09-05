@@ -62,8 +62,6 @@ import com.flow.shift.R
 import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.theme.*
 import kotlin.math.roundToInt
-import coil.compose.AsyncImage
-import androidx.compose.foundation.lazy.LazyRow
 
 
 
@@ -1378,10 +1376,16 @@ private fun PermissionsStep(
     onAutostartClick: () -> Unit,
     onBackgroundWindowsClick: () -> Unit
 ) {
-    var showHelpBottomSheet by remember { mutableStateOf(false) }
+    var showBackgroundWindowsGuide by remember { mutableStateOf(false) }
 
-    if (showHelpBottomSheet) {
-        PermissionHelpSheet(onDismissRequest = { showHelpBottomSheet = false })
+    if (showBackgroundWindowsGuide) {
+        BackgroundWindowsGuideDialog(
+            onDismiss = { showBackgroundWindowsGuide = false },
+            onProceed = {
+                showBackgroundWindowsGuide = false
+                onBackgroundWindowsClick()
+            }
+        )
     }
 
     Column(
@@ -1526,32 +1530,10 @@ private fun PermissionsStep(
                 title = "Background Windows",
                 description = "Allows the blocker screen to open from the background.",
                 isGranted = hasBackgroundWindowsPermission,
-                onClick = onBackgroundWindowsClick
+                onClick = { showBackgroundWindowsGuide = true }
             )
             
             Spacer(modifier = Modifier.height(24.dp))
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        TextButton(
-            onClick = { showHelpBottomSheet = true },
-            modifier = Modifier.padding(bottom = 32.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.HelpOutline,
-                contentDescription = null,
-                tint = Amber500,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Help, I can't find the permissions",
-                color = Amber500,
-                fontFamily = AppFontFamily,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
         }
     }
 }
@@ -1899,136 +1881,72 @@ private fun hasBackgroundWindowPermission(context: Context): Boolean {
     }
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  HELP SHEET — Brand Specific Permission Guide
-// ════════════════════════════════════════════════════════════════════
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PermissionHelpSheet(
-    onDismissRequest: () -> Unit
+private fun BackgroundWindowsGuideDialog(
+    onDismiss: () -> Unit,
+    onProceed: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-    val brands = listOf("Samsung", "Xiaomi/Poco", "Oppo/OnePlus", "Vivo", "Other")
-    var selectedBrand by remember { mutableStateOf(brands.first()) }
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    
+    val guideText = when {
+        manufacturer in listOf("xiaomi", "redmi", "poco") -> 
+            "1. You will be taken to App Info.\n2. Tap on 'Other permissions'.\n3. Find 'Display pop-up windows while running in the background' and set it to 'Always allow'."
+        manufacturer in listOf("oppo", "oneplus", "realme") -> 
+            "1. You will be taken to App Info.\n2. Tap on 'Permissions'.\n3. Find 'Display over other apps' or similar and allow it."
+        manufacturer in listOf("vivo", "iqoo") -> 
+            "1. You will be taken to App Info.\n2. Tap on 'Permissions' or 'Single permission settings'.\n3. Enable 'Background pop-ups'."
+        manufacturer in listOf("huawei", "honor") -> 
+            "1. You will be taken to App Info.\n2. Tap on 'Permissions'.\n3. Allow 'Dropzone' or 'Display over other apps'."
+        else -> 
+            "Please find the permission to 'Display pop-up windows while running in the background' and allow it."
+    }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismissRequest,
-        sheetState = sheetState,
+    AlertDialog(
+        onDismissRequest = onDismiss,
         containerColor = SurfaceBlack,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.3f)) }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp)
-        ) {
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary,
+        shape = RoundedCornerShape(20.dp),
+        title = {
             Text(
-                text = "Enable Permissions",
-                color = TextPrimary,
+                text = "Enable Background Windows",
                 fontFamily = AppFontFamily,
-                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
+                fontSize = 20.sp
             )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
+        },
+        text = {
             Text(
-                text = "Select your phone brand for specific instructions on enabling permissions.",
-                color = TextSecondary,
+                text = guideText,
                 fontFamily = AppFontFamily,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
+                fontSize = 15.sp,
+                lineHeight = 22.sp
             )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Brand selection
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+        },
+        confirmButton = {
+            Button(
+                onClick = onProceed,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Amber500,
+                    contentColor = SurfaceBlack
+                ),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                items(brands) { brand ->
-                    val isSelected = brand == selectedBrand
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (isSelected) Amber500 else Color.White.copy(alpha = 0.1f))
-                            .clickable { selectedBrand = brand }
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            text = brand,
-                            color = if (isSelected) SurfaceBlack else TextPrimary,
-                            fontFamily = AppFontFamily,
-                            fontSize = 14.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                }
+                Text(
+                    text = "Let's do it",
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold
+                )
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Guide Content
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = false)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(alpha = 0.05f))
-                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
-                    .padding(16.dp)
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item {
-                        val guideText = when (selectedBrand) {
-                            "Samsung" -> "1. Go to Settings -> Apps\n2. Find FlowShift\n3. Allow 'Appear on top'\n4. Go to Battery -> Unrestricted\n5. Enable Accessibility permission."
-                            "Xiaomi/Poco" -> "1. Go to Settings -> Apps -> Manage apps -> FlowShift\n2. Enable 'Autostart'\n3. Go to 'Other permissions' and enable 'Display pop-up windows while running in the background'\n4. Go to Battery saver -> No restrictions."
-                            "Oppo/OnePlus" -> "1. Go to Settings -> Apps -> App management -> FlowShift\n2. Enable 'Auto-startup'\n3. Go to 'Battery usage' and enable 'Allow background activity'.\n4. Enable 'Display over other apps'."
-                            "Vivo" -> "1. Go to Settings -> Apps -> FlowShift\n2. Enable 'Auto-start'\n3. Go to 'Permissions' -> 'Single permission settings' -> Enable 'Display on lock screen' and 'Background pop-ups'.\n4. Battery -> High background power consumption -> Allow."
-                            else -> "1. Go to your phone's Settings -> Apps -> FlowShift\n2. Look for 'Draw over other apps' or 'Appear on top' and enable it.\n3. Look for 'Autostart' or 'Auto-launch' and enable it.\n4. Ensure Battery optimization is set to 'Unrestricted'."
-                        }
-
-                        val imageUrl = when (selectedBrand) {
-                            "Xiaomi/Poco" -> "https://dontkillmyapp.com/images/xiaomi/xiaomi_autostart.png"
-                            "Samsung" -> "https://dontkillmyapp.com/images/samsung/samsung_battery_unrestricted.png"
-                            "Oppo/OnePlus" -> "https://dontkillmyapp.com/images/oneplus/oneplus_battery_optimization.png"
-                            "Vivo" -> "https://dontkillmyapp.com/images/vivo/vivo_auto_start.png"
-                            else -> "https://dontkillmyapp.com/images/stock/stock_battery.png"
-                        }
-
-                        Column {
-                            Text(
-                                text = guideText,
-                                color = TextPrimary,
-                                fontFamily = AppFontFamily,
-                                fontSize = 15.sp,
-                                lineHeight = 24.sp
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            AsyncImage(
-                                model = imageUrl,
-                                contentDescription = "Guide Screenshot",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 250.dp)
-                                    .clip(RoundedCornerShape(12.dp)),
-                                contentScale = ContentScale.FillWidth
-                            )
-                        }
-                    }
-                }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Cancel",
+                    color = TextMuted,
+                    fontFamily = AppFontFamily
+                )
             }
         }
-    }
+    )
 }

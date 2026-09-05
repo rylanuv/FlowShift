@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,7 +47,8 @@ import com.flow.shift.R
 @Composable
 fun ModesScreen(
     viewModel: ModesViewModel = hiltViewModel(),
-    showBackground: Boolean = false
+    showBackground: Boolean = false,
+    onNavigateToDisciplineModeSettings: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pendingChange by viewModel.pendingModeChange.collectAsStateWithLifecycle()
@@ -141,6 +143,9 @@ fun ModesScreen(
             PendingChangeType.UPGRADE_CONFIRMATION -> {
                 UpgradeConfirmationDialog(
                     targetMode = change.targetMode,
+                    onNavigateToSettings = {
+                        onNavigateToDisciplineModeSettings()
+                    },
                     onConfirm = { viewModel.confirmModeChange() },
                     onDismiss = { viewModel.dismissModeChange() }
                 )
@@ -150,6 +155,9 @@ fun ModesScreen(
                     targetMode = change.targetMode,
                     downgradeWaitRemaining = downgradeWaitRemaining,
                     autoDowngradeAtMidnight = uiState.autoDowngradeAtMidnight,
+                    onNavigateToSettings = {
+                        onNavigateToDisciplineModeSettings()
+                    },
                     onAutoDowngradeChange = { viewModel.setAutoDowngradeAtMidnight(it) },
                     onConfirm = { viewModel.confirmModeChange() },
                     onDismiss = { viewModel.dismissModeChange() }
@@ -282,6 +290,7 @@ private fun ModeCard(
 @Composable
 private fun UpgradeConfirmationDialog(
     targetMode: BlockingMode,
+    onNavigateToSettings: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -335,13 +344,26 @@ private fun UpgradeConfirmationDialog(
                 
                 if (targetMode == BlockingMode.STRICT) {
                     Spacer(modifier = Modifier.height(20.dp))
-                    Text(
-                        text = "Configure your challenge",
-                        color = TextSecondary,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
-                    )
+                    OutlinedButton(
+                        onClick = onNavigateToSettings,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = ModeStrictAccent
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, ModeStrictAccent.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Configure your challenge",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -403,6 +425,7 @@ private fun DowngradeConfirmationDialog(
     targetMode: BlockingMode,
     downgradeWaitRemaining: Int,
     autoDowngradeAtMidnight: Boolean,
+    onNavigateToSettings: () -> Unit,
     onAutoDowngradeChange: (Boolean) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -431,13 +454,26 @@ private fun DowngradeConfirmationDialog(
                 
                 if (targetMode == BlockingMode.STRICT) {
                     Spacer(modifier = Modifier.height(20.dp))
-                    Text(
-                        text = "Configure your challenge",
-                        color = TextSecondary,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
-                    )
+                    OutlinedButton(
+                        onClick = onNavigateToSettings,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = ModeStrictAccent
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, ModeStrictAccent.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Configure your challenge",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
