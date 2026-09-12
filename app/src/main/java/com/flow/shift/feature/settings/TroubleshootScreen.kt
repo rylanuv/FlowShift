@@ -1,5 +1,6 @@
 package com.flow.shift.feature.settings
 
+import android.annotation.SuppressLint
 import android.Manifest
 import android.app.AppOpsManager
 import android.content.Context
@@ -7,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Process
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
@@ -47,6 +50,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.flow.shift.feature.settings.SettingsViewModel
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,24 +80,64 @@ fun TroubleshootScreen(
     }
 
     val isChineseOEM = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
-    var hasAutostartPermission by remember { mutableStateOf(!isChineseOEM) }
-    var hasBackgroundWindowsPermission by remember { mutableStateOf(!isChineseOEM) }
+    val autostartCheckSupported = remember { canCheckAutostart(context) }
+    var userInteractedAutostart by remember { mutableStateOf(false) }
+    var hasAutostartPermission by remember {
+        mutableStateOf(
+            if (!isChineseOEM) true
+            else if (autostartCheckSupported) hasAutostartPermission(context)
+            else false
+        )
+    }
+    var hasBackgroundWindowsPermission by remember { mutableStateOf(hasBackgroundWindowPermission(context)) }
+    var hasBatteryOptimizationExemption by remember { mutableStateOf(isBatteryOptimizationExempt(context)) }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    val refreshPermissions = remember(context, autostartCheckSupported) {
+        {
+            hasUsagePermission = hasUsageStatsPermission(context)
+            hasOverlayPermission = Settings.canDrawOverlays(context)
+            hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            hasAccessibilityPermission = hasAccessibilityPermission(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                hasNotificationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            }
+            hasBatteryOptimizationExemption = isBatteryOptimizationExempt(context)
+            if (isChineseOEM) {
+                hasBackgroundWindowsPermission = hasBackgroundWindowPermission(context)
+                if (autostartCheckSupported) {
+                    hasAutostartPermission = hasAutostartPermission(context)
+                } else if (userInteractedAutostart) {
+                    hasAutostartPermission = true
+                }
+            }
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                hasUsagePermission = hasUsageStatsPermission(context)
-                hasOverlayPermission = Settings.canDrawOverlays(context)
-                hasCameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                hasAccessibilityPermission = hasAccessibilityPermission(context)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    hasNotificationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                refreshPermissions()
+                coroutineScope.launch {
+                    val retryDelays = listOf(150L, 300L, 600L, 1000L, 1500L, 2000L)
+                    for (d in retryDelays) {
+                        delay(d)
+                        refreshPermissions()
+                    }
                 }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            refreshPermissions()
+            delay(500)
         }
     }
 
@@ -262,7 +308,12 @@ fun TroubleshootScreen(
                     description = "Required to prevent bypassing the block screen.",
                     isGranted = hasAccessibilityPermission,
                     onClick = {
-                        showAccessibilityDialog = true
+                        if (hasAccessibilityPermission(context)) {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            context.startActivity(intent)
+                        } else {
+                            showAccessibilityDialog = true
+                        }
                     }
                 )
             }
@@ -284,6 +335,17 @@ fun TroubleshootScreen(
                 }
             }
 
+            item {
+                PermissionItem(
+                    icon = Icons.Default.BatteryAlert,
+                    title = "Battery Optimization",
+                    description = "Prevents your phone from killing FlowShift in the background. Critical for reliable blocking.",
+                    isGranted = hasBatteryOptimizationExemption,
+                    onClick = {
+                        openBatteryOptimizationSettings(context)
+                    }
+                )
+            }
 
             if (isChineseOEM) {
                 item {
@@ -293,7 +355,7 @@ fun TroubleshootScreen(
                         description = "Required for your phone to keep FlowShift running in the background.",
                         isGranted = hasAutostartPermission,
                         onClick = {
-                            hasAutostartPermission = true
+                            userInteractedAutostart = true
                             openAutostartSettings(context)
                         }
                     )
@@ -306,7 +368,6 @@ fun TroubleshootScreen(
                         description = "Allows FlowShift to open the blocker from the background.",
                         isGranted = hasBackgroundWindowsPermission,
                         onClick = {
-                            hasBackgroundWindowsPermission = true
                             openBackgroundWindowsSettings(context)
                         }
                     )
@@ -526,6 +587,50 @@ private fun hasAccessibilityPermission(context: Context): Boolean {
     return false
 }
 
+private fun canCheckAutostart(context: Context): Boolean {
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    if (manufacturer in listOf("xiaomi", "redmi", "poco")) {
+        return true
+    }
+    return try {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val op = try {
+            val field = AppOpsManager::class.java.getDeclaredField("OP_AUTO_START")
+            field.getInt(null)
+        } catch (e: Exception) {
+            10008
+        }
+        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
+        method.invoke(appOps, op, Process.myUid(), context.packageName)
+        true
+    } catch (e: Exception) {
+        false
+    }
+}
+
+private fun hasAutostartPermission(context: Context): Boolean {
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    if (manufacturer !in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")) {
+        return true
+    }
+
+    try {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val op = try {
+            val field = AppOpsManager::class.java.getDeclaredField("OP_AUTO_START")
+            field.getInt(null)
+        } catch (e: Exception) {
+            10008
+        }
+
+        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
+        val mode = method.invoke(appOps, op, Process.myUid(), context.packageName) as Int
+        return mode == AppOpsManager.MODE_ALLOWED
+    } catch (e: Exception) {
+        return false
+    }
+}
+
 private fun openAutostartSettings(context: Context) {
     val intents = listOf(
         Intent().setComponent(android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
@@ -555,6 +660,41 @@ private fun openAutostartSettings(context: Context) {
     openAppSettings(context)
 }
 
+private fun hasBackgroundWindowPermission(context: Context): Boolean {
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    if (manufacturer !in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")) {
+        return true
+    }
+    
+    try {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+
+        // 1. Try string op name if supported
+        try {
+            val mode = appOps.checkOpNoThrow("android:background_start_activity", Process.myUid(), context.packageName)
+            if (mode == AppOpsManager.MODE_ALLOWED) return true
+            if (mode == AppOpsManager.MODE_IGNORED || mode == AppOpsManager.MODE_ERRORED) return false
+        } catch (e: Exception) {
+            // Fall through to int op code
+        }
+
+        // 2. Try integer op code (10021 or OP_BACKGROUND_START_ACTIVITY field)
+        val op = try {
+            val field = AppOpsManager::class.java.getDeclaredField("OP_BACKGROUND_START_ACTIVITY")
+            field.getInt(null)
+        } catch (e: Exception) {
+            10021
+        }
+        
+        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
+        val mode = method.invoke(appOps, op, Process.myUid(), context.packageName) as Int
+        return mode == AppOpsManager.MODE_ALLOWED
+    } catch (e: Exception) {
+        // If we can't check it programmatically, default to true to not block the user
+        return true
+    }
+}
+
 private fun openBackgroundWindowsSettings(context: Context) {
     try {
         val intent = Intent("miui.intent.action.APP_PERM_EDITOR").apply {
@@ -580,6 +720,38 @@ private fun openAppSettings(context: Context) {
         context.startActivity(intent)
     } catch (e: Exception) {
         // Fallback
+    }
+}
+
+private fun isBatteryOptimizationExempt(context: Context): Boolean {
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return false
+    return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+@SuppressLint("BatteryLife")
+private fun openBatteryOptimizationSettings(context: Context) {
+    if (isBatteryOptimizationExempt(context)) {
+        try {
+            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            return
+        } catch (e: Exception) {
+            openAppSettings(context)
+            return
+        }
+    }
+    try {
+        // Direct exemption request — shows a system dialog to the user
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        // Fallback: open the full battery optimization list
+        try {
+            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (e2: Exception) {
+            openAppSettings(context)
+        }
     }
 }
 

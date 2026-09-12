@@ -1,13 +1,16 @@
 package com.flow.shift.core.usagetracking
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.flow.shift.core.database.BlockedAppDao
 import com.flow.shift.core.database.InterventionDao
@@ -300,6 +303,29 @@ class AppTrackingService : Service() {
             .build()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // Schedule restart via AlarmManager when user clears app from recents
+        try {
+            val restartIntent = Intent(applicationContext, AppTrackingService::class.java)
+            val pendingIntent = PendingIntent.getForegroundService(
+                applicationContext,
+                RESTART_REQUEST_CODE,
+                restartIntent,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + RESTART_DELAY_MS,
+                pendingIntent
+            )
+            android.util.Log.d("AppTracking", "Scheduled service restart after task removal")
+        } catch (e: Exception) {
+            android.util.Log.e("AppTracking", "Failed to schedule service restart", e)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
@@ -316,6 +342,8 @@ class AppTrackingService : Service() {
         private const val SAME_APP_RECHECK_INTERVAL_MILLIS = 5_000L
         private const val TARGET_RECHECK_INTERVAL_MILLIS = 15_000L
         private const val BLOCKER_LAUNCH_SETTLE_MILLIS = 1_000L
+        private const val RESTART_REQUEST_CODE = 1002
+        private const val RESTART_DELAY_MS = 1_000L
     }
 }
 

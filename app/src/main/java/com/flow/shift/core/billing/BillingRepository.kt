@@ -166,58 +166,68 @@ class BillingRepository @Inject constructor(
     ) {
         val currentPlans = getDefaultPlans().toMutableList()
 
-        // 1. Resolve Monthly Plan
-        // Check standalone monthly product first, then subscription group base plan
-        var monthlyDetails = subDetails.find { it.productId == BillingConstants.PRODUCT_MONTHLY }
-        var monthlyOfferToken: String? = monthlyDetails?.subscriptionOfferDetails?.firstOrNull()?.offerToken
-        var monthlyPrice: String? = monthlyDetails?.subscriptionOfferDetails?.firstOrNull()
-            ?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice
-
-        if (monthlyDetails == null) {
-            val groupDetails = subDetails.find { it.productId == BillingConstants.PRODUCT_SUBSCRIPTION_GROUP }
-            val groupOffer = groupDetails?.subscriptionOfferDetails?.find { it.basePlanId == BillingConstants.BASE_PLAN_MONTHLY }
-            if (groupOffer != null) {
-                monthlyDetails = groupDetails
-                monthlyOfferToken = groupOffer.offerToken
-                monthlyPrice = groupOffer.pricingPhases.pricingPhaseList.firstOrNull()?.formattedPrice
+        // Gather all offers across all subscription products
+        val allSubOffers = subDetails.flatMap { product ->
+            product.subscriptionOfferDetails.orEmpty().map { offer ->
+                Triple(product, offer, offer.pricingPhases.pricingPhaseList.firstOrNull()?.formattedPrice)
             }
         }
 
-        if (monthlyDetails != null && monthlyPrice != null) {
+        // 1. Resolve Monthly Plan
+        // Matches basePlanId: flowshift-monthly, monthly, containing "month", or billing period P1M
+        val monthlyMatch = allSubOffers.firstOrNull { (_, offer, price) ->
+            price != null && (
+                offer.basePlanId == BillingConstants.BASE_PLAN_MONTHLY ||
+                offer.basePlanId == BillingConstants.ALT_BASE_PLAN_MONTHLY ||
+                offer.basePlanId.contains("month", ignoreCase = true) ||
+                offer.pricingPhases.pricingPhaseList.any { it.billingPeriod == "P1M" }
+            )
+        } ?: run {
+            val prod = subDetails.find { it.productId == BillingConstants.PRODUCT_MONTHLY }
+            val offer = prod?.subscriptionOfferDetails?.firstOrNull()
+            val price = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice
+            if (prod != null && offer != null && price != null) Triple(prod, offer, price) else null
+        }
+
+        if (monthlyMatch != null) {
+            val (prod, offer, price) = monthlyMatch
             val index = currentPlans.indexOfFirst { it.id == BillingConstants.PLAN_MONTHLY }
             if (index != -1) {
                 currentPlans[index] = currentPlans[index].copy(
-                    formattedPrice = monthlyPrice,
-                    productDetails = monthlyDetails,
-                    offerToken = monthlyOfferToken
+                    formattedPrice = price ?: currentPlans[index].formattedPrice,
+                    productDetails = prod,
+                    offerToken = offer.offerToken
                 )
+                Log.d(TAG, "Monthly plan resolved: ${prod.productId} (${offer.basePlanId}) at $price")
             }
         }
 
         // 2. Resolve Yearly Plan
-        var yearlyDetails = subDetails.find { it.productId == BillingConstants.PRODUCT_YEARLY }
-        var yearlyOfferToken: String? = yearlyDetails?.subscriptionOfferDetails?.firstOrNull()?.offerToken
-        var yearlyPrice: String? = yearlyDetails?.subscriptionOfferDetails?.firstOrNull()
-            ?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice
-
-        if (yearlyDetails == null) {
-            val groupDetails = subDetails.find { it.productId == BillingConstants.PRODUCT_SUBSCRIPTION_GROUP }
-            val groupOffer = groupDetails?.subscriptionOfferDetails?.find { it.basePlanId == BillingConstants.BASE_PLAN_YEARLY }
-            if (groupOffer != null) {
-                yearlyDetails = groupDetails
-                yearlyOfferToken = groupOffer.offerToken
-                yearlyPrice = groupOffer.pricingPhases.pricingPhaseList.firstOrNull()?.formattedPrice
-            }
+        // Matches basePlanId: flowshift-yearly, yearly, containing "year", or billing period P1Y
+        val yearlyMatch = allSubOffers.firstOrNull { (_, offer, price) ->
+            price != null && (
+                offer.basePlanId == BillingConstants.BASE_PLAN_YEARLY ||
+                offer.basePlanId == BillingConstants.ALT_BASE_PLAN_YEARLY ||
+                offer.basePlanId.contains("year", ignoreCase = true) ||
+                offer.pricingPhases.pricingPhaseList.any { it.billingPeriod == "P1Y" }
+            )
+        } ?: run {
+            val prod = subDetails.find { it.productId == BillingConstants.PRODUCT_YEARLY }
+            val offer = prod?.subscriptionOfferDetails?.firstOrNull()
+            val price = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice
+            if (prod != null && offer != null && price != null) Triple(prod, offer, price) else null
         }
 
-        if (yearlyDetails != null && yearlyPrice != null) {
+        if (yearlyMatch != null) {
+            val (prod, offer, price) = yearlyMatch
             val index = currentPlans.indexOfFirst { it.id == BillingConstants.PLAN_YEARLY }
             if (index != -1) {
                 currentPlans[index] = currentPlans[index].copy(
-                    formattedPrice = yearlyPrice,
-                    productDetails = yearlyDetails,
-                    offerToken = yearlyOfferToken
+                    formattedPrice = price ?: currentPlans[index].formattedPrice,
+                    productDetails = prod,
+                    offerToken = offer.offerToken
                 )
+                Log.d(TAG, "Yearly plan resolved: ${prod.productId} (${offer.basePlanId}) at $price")
             }
         }
 
@@ -232,6 +242,7 @@ class BillingRepository @Inject constructor(
                     formattedPrice = lifetimePrice,
                     productDetails = lifetimeDetails
                 )
+                Log.d(TAG, "Lifetime plan resolved: ${lifetimeDetails.productId} at $lifetimePrice")
             }
         }
 

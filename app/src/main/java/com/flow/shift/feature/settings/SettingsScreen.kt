@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -195,7 +196,18 @@ fun SettingsScreen(
             subtitle = "What to block in apps"
         ) {
             SegmentedControl(
-                options = listOf("Reels Only" to if (isPremium) Icons.Default.VideoLibrary else Icons.Default.Lock, "Whole App" to Icons.Default.Apps),
+                options = listOf(
+                    SegmentOption(
+                        text = "Reels Only",
+                        icon = Icons.Default.VideoLibrary,
+                        isLocked = !isPremium
+                    ),
+                    SegmentOption(
+                        text = "Whole App",
+                        icon = Icons.Default.Apps,
+                        isLocked = false
+                    )
+                ),
                 selectedOption = if (state.blockType == "REELS") "Reels Only" else "Whole App",
                 onOptionSelected = { 
                     if (it == "Reels Only") {
@@ -456,32 +468,34 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            if (!isPremium) {
+                Spacer(modifier = Modifier.height(24.dp))
 
-            // Manage Subscription
-            Row(
-                modifier = Modifier
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onNavigateToSubscription
+                // Manage Subscription
+                Row(
+                    modifier = Modifier
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onNavigateToSubscription
+                        )
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Upgrade to Pro",
+                        color = Amber500,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
                     )
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isPremium) "Manage Subscription" else "Upgrade to Pro",
-                    color = Amber500,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = Amber500,
-                    modifier = Modifier.size(16.dp)
-                )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = Amber500,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
 
@@ -1000,9 +1014,15 @@ private fun SettingsToggleRow(
     }
 }
 
+private data class SegmentOption(
+    val text: String,
+    val icon: ImageVector,
+    val isLocked: Boolean = false
+)
+
 @Composable
 private fun SegmentedControl(
-    options: List<Pair<String, ImageVector>>,
+    options: List<SegmentOption>,
     selectedOption: String,
     onOptionSelected: (String) -> Unit
 ) {
@@ -1014,8 +1034,8 @@ private fun SegmentedControl(
             .padding(4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        options.forEach { (text, icon) ->
-            val isSelected = selectedOption == text
+        options.forEach { option ->
+            val isSelected = selectedOption == option.text
             val backgroundColor = if (isSelected) SurfaceCard else Color.Transparent
             val contentColor = if (isSelected) Amber500 else TextSecondary
             val borderModifier = if (isSelected) Modifier.border(1.dp, SurfaceCardBorder, RoundedCornerShape(12.dp)) else Modifier
@@ -1026,24 +1046,42 @@ private fun SegmentedControl(
                     .clip(RoundedCornerShape(12.dp))
                     .background(backgroundColor)
                     .then(borderModifier)
-                    .clickable { onOptionSelected(text) }
+                    .clickable { onOptionSelected(option.text) }
                     .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = icon,
+                    imageVector = option.icon,
                     contentDescription = null,
                     tint = contentColor,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = text,
+                    text = option.text,
                     color = contentColor,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                 )
+                if (option.isLocked) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(PremiumGold.copy(alpha = 0.15f))
+                            .border(1.dp, PremiumGold.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(
+                            text = "PRO",
+                            color = PremiumGold,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
             }
         }
     }
@@ -1177,34 +1215,159 @@ private fun ReelCountExplainerDialog(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Visual explainer
+                // Visual explainer: Portrait phone mockup with floating badge overlay
                 Box(
                     modifier = Modifier
-                        .size(100.dp)
-                        .background(color = SurfaceCardDarker, shape = RoundedCornerShape(12.dp))
-                        .padding(8.dp),
-                    contentAlignment = Alignment.TopEnd
+                        .width(146.dp)
+                        .height(210.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF22222A),
+                                    Color(0xFF15151B),
+                                    Color(0xFF0C0C0F)
+                                )
+                            )
+                        )
+                        .border(1.5.dp, Color(0xFF2C2C36), RoundedCornerShape(20.dp))
                 ) {
-                    // Badge
-                    Box(
-                        modifier = Modifier
-                            .background(color = DangerRed, shape = CircleShape)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                            .zIndex(1f)
-                    ) {
-                        Text("142", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                    // A simple rect to represent a reel in the app
+                    // Subtle video glow
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(top = 16.dp, end = 16.dp)
-                            .background(color = SurfaceCard, shape = RoundedCornerShape(8.dp))
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Amber500.copy(alpha = 0.08f),
+                                        Color.Transparent
+                                    ),
+                                    radius = 240f
+                                )
+                            )
+                    )
+
+                    // Top phone speaker/notch
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 6.dp)
+                            .width(28.dp)
+                            .height(3.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.2f))
+                    )
+
+                    // Floating Reel Count Badge Overlay (centered below top notch)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 16.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xF2121215))
+                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(50))
+                            .padding(horizontal = 7.dp, vertical = 3.5.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "⚠️",
+                                fontSize = 9.sp
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Reels Scrolled: ",
+                                color = Color(0xFFCCCCCC),
+                                fontSize = 9.sp,
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.Normal
+                            )
+                            Text(
+                                text = "142",
+                                color = DangerRed,
+                                fontSize = 9.5.sp,
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Reel UI mockup - right side interaction buttons
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 8.dp, bottom = 26.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.4f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Comment,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.4f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.4f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
+                    // Reel UI mockup - bottom left creator & caption placeholders
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 10.dp, bottom = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.35f))
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Box(
+                                modifier = Modifier
+                                    .width(38.dp)
+                                    .height(5.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Color.White.copy(alpha = 0.35f))
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .width(56.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = 0.2f))
+                        )
+                    }
+
+                    // Bottom phone home bar
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 4.dp)
+                            .width(34.dp)
+                            .height(2.5.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.25f))
                     )
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "A persistent badge will appear on your screen showing exactly how many reels or shorts you've scrolled through. This helps break the trance by bringing your awareness back to the present.",
+                    text = "Shows how many reels you've scrolled on top of your apps to help bring awareness and break the flow.",
                     fontFamily = AppFontFamily,
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center

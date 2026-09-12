@@ -1,5 +1,6 @@
 package com.flow.shift.feature.onboarding
 
+import android.annotation.SuppressLint
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
@@ -62,6 +63,9 @@ import com.flow.shift.R
 import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.theme.*
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 
 
@@ -119,16 +123,63 @@ fun OnboardingScreen(
     }
     
     // OEM specific permissions
-    val isChineseOEM = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
-    var hasAutostartPermission by remember { mutableStateOf(!isChineseOEM) }
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    val isChineseOEM = manufacturer in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+    val isSamsung = manufacturer == "samsung"
+    val autostartCheckSupported = remember { canCheckAutostart(context) }
+    var userInteractedAutostart by remember { mutableStateOf(false) }
+    var hasAutostartPermission by remember {
+        mutableStateOf(
+            if (!isChineseOEM) true
+            else if (autostartCheckSupported) hasAutostartPermission(context)
+            else false
+        )
+    }
     var hasBackgroundWindowsPermission by remember { mutableStateOf(hasBackgroundWindowPermission(context)) }
+    var hasBatteryOptimizationExemption by remember { mutableStateOf(isBatteryOptimizationExempt(context)) }
+    var hasSamsungBatteryPermission by remember { mutableStateOf(!isSamsung) } // Manual "I did it" for Samsung
+
+    val coroutineScope = rememberCoroutineScope()
+
+    val refreshPermissions = remember(context, autostartCheckSupported) {
+        {
+            hasUsagePermission = hasUsageStatsPermission(context)
+            hasOverlayPermission = Settings.canDrawOverlays(context)
+            hasAccessibilityPermission = hasAccessibilityPermission(context)
+            hasCameraPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            hasBackgroundWindowsPermission = hasBackgroundWindowPermission(context)
+            hasBatteryOptimizationExemption = isBatteryOptimizationExempt(context)
+            if (isChineseOEM) {
+                if (autostartCheckSupported) {
+                    hasAutostartPermission = hasAutostartPermission(context)
+                } else if (userInteractedAutostart) {
+                    hasAutostartPermission = true
+                }
+            }
+        }
+    }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        hasUsagePermission = hasUsageStatsPermission(context)
-        hasOverlayPermission = Settings.canDrawOverlays(context)
-        hasAccessibilityPermission = hasAccessibilityPermission(context)
-        hasCameraPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        hasBackgroundWindowsPermission = hasBackgroundWindowPermission(context)
+        refreshPermissions()
+        // Staggered retries on resume to handle asynchronous OS/Settings permission persistence
+        coroutineScope.launch {
+            val retryDelays = listOf(150L, 300L, 600L, 1000L, 1500L, 2000L)
+            for (d in retryDelays) {
+                delay(d)
+                refreshPermissions()
+            }
+        }
+    }
+
+    // Active polling while on the Permissions step (Step 5)
+    // Ensures immediate detection even with delayed OS sync or without full activity pause/resume
+    LaunchedEffect(currentStep) {
+        if (currentStep == 5) {
+            while (isActive) {
+                refreshPermissions()
+                delay(500)
+            }
+        }
     }
 
     // Can proceed to next step?
@@ -138,7 +189,7 @@ fun OnboardingScreen(
         2 -> true // Target screen time — slider always valid
         3 -> true // Mode — always has a default (EASY)
         4 -> true // Apps — optional, can skip
-        5 -> hasUsagePermission && hasOverlayPermission && hasAccessibilityPermission && hasAutostartPermission && hasBackgroundWindowsPermission
+        5 -> hasUsagePermission && hasOverlayPermission && hasAccessibilityPermission && hasAutostartPermission && hasBackgroundWindowsPermission && hasBatteryOptimizationExemption && hasSamsungBatteryPermission
         6 -> true // All set — always
         else -> false
     }
@@ -214,12 +265,29 @@ fun OnboardingScreen(
                         hasAccessibilityPermission = hasAccessibilityPermission,
                         hasAutostartPermission = hasAutostartPermission,
                         hasBackgroundWindowsPermission = hasBackgroundWindowsPermission,
+                        hasBatteryOptimizationExemption = hasBatteryOptimizationExemption,
+                        hasSamsungBatteryPermission = hasSamsungBatteryPermission,
                         onAutostartClick = {
-                            hasAutostartPermission = true
-                            openAutostartSettings(context)
+                            if (autostartCheckSupported && hasAutostartPermission(context)) {
+                                hasAutostartPermission = true
+                            } else {
+                                userInteractedAutostart = true
+                                openAutostartSettings(context)
+                            }
                         },
                         onBackgroundWindowsClick = {
                             openBackgroundWindowsSettings(context)
+                        },
+                        onBatteryOptimizationClick = {
+                            if (isBatteryOptimizationExempt(context)) {
+                                hasBatteryOptimizationExemption = true
+                            } else {
+                                openBatteryOptimizationSettings(context)
+                            }
+                        },
+                        onSamsungBatteryClick = {
+                            hasSamsungBatteryPermission = true
+                            openSamsungBatterySettings(context)
                         }
                     )
                     6 -> AllSetStep(
@@ -1373,10 +1441,15 @@ private fun PermissionsStep(
     hasAccessibilityPermission: Boolean,
     hasAutostartPermission: Boolean,
     hasBackgroundWindowsPermission: Boolean,
+    hasBatteryOptimizationExemption: Boolean,
+    hasSamsungBatteryPermission: Boolean,
     onAutostartClick: () -> Unit,
-    onBackgroundWindowsClick: () -> Unit
+    onBackgroundWindowsClick: () -> Unit,
+    onBatteryOptimizationClick: () -> Unit,
+    onSamsungBatteryClick: () -> Unit
 ) {
     var showBackgroundWindowsGuide by remember { mutableStateOf(false) }
+    var showSamsungBatteryGuide by remember { mutableStateOf(false) }
 
     if (showBackgroundWindowsGuide) {
         BackgroundWindowsGuideDialog(
@@ -1384,6 +1457,16 @@ private fun PermissionsStep(
             onProceed = {
                 showBackgroundWindowsGuide = false
                 onBackgroundWindowsClick()
+            }
+        )
+    }
+
+    if (showSamsungBatteryGuide) {
+        SamsungBatteryGuideDialog(
+            onDismiss = { showSamsungBatteryGuide = false },
+            onProceed = {
+                showSamsungBatteryGuide = false
+                onSamsungBatteryClick()
             }
         )
     }
@@ -1455,6 +1538,9 @@ private fun PermissionsStep(
             description = "Detects when you open a distracting app so we can step in.",
             isGranted = hasUsagePermission,
             onClick = {
+                if (hasUsageStatsPermission(context)) {
+                    return@PermissionCard
+                }
                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                 intent.data = Uri.parse("package:${context.packageName}")
                 try {
@@ -1474,6 +1560,9 @@ private fun PermissionsStep(
             description = "Shows the blocker screen when you try to open a blocked app.",
             isGranted = hasOverlayPermission,
             onClick = {
+                if (Settings.canDrawOverlays(context)) {
+                    return@PermissionCard
+                }
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:${context.packageName}")
@@ -1504,14 +1593,31 @@ private fun PermissionsStep(
             description = "Allows us to detect when you're scrolling Reels or Shorts.",
             isGranted = hasAccessibilityPermission,
             onClick = {
+                if (hasAccessibilityPermission(context)) {
+                    return@PermissionCard
+                }
                 showAccessibilityDialog = true
             }
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        val isChineseOEM = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
-        
+        // Battery Optimization — shown for ALL devices
+        PermissionCard(
+            icon = Icons.Default.BatteryAlert,
+            title = "Battery Optimization",
+            description = "Prevents your phone from killing FlowShift in the background. Critical for reliable blocking.",
+            isGranted = hasBatteryOptimizationExemption,
+            onClick = onBatteryOptimizationClick
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // OEM-specific permissions
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val isChineseOEM = manufacturer in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+        val isSamsung = manufacturer == "samsung"
+
         if (isChineseOEM) {
             // Background Autostart
             PermissionCard(
@@ -1532,9 +1638,24 @@ private fun PermissionsStep(
                 isGranted = hasBackgroundWindowsPermission,
                 onClick = { showBackgroundWindowsGuide = true }
             )
-            
-            Spacer(modifier = Modifier.height(24.dp))
+
+            Spacer(modifier = Modifier.height(14.dp))
         }
+
+        if (isSamsung) {
+            // Samsung Battery / Sleeping Apps
+            PermissionCard(
+                icon = Icons.Default.BatterySaver,
+                title = "Samsung Battery Settings",
+                description = "Add FlowShift to 'Never sleeping apps' so Samsung doesn't stop it.",
+                isGranted = hasSamsungBatteryPermission,
+                onClick = { showSamsungBatteryGuide = true }
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -1800,6 +1921,50 @@ private fun hasUsageStatsPermission(context: Context): Boolean {
     return mode == AppOpsManager.MODE_ALLOWED
 }
 
+private fun canCheckAutostart(context: Context): Boolean {
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    if (manufacturer in listOf("xiaomi", "redmi", "poco")) {
+        return true
+    }
+    return try {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val op = try {
+            val field = AppOpsManager::class.java.getDeclaredField("OP_AUTO_START")
+            field.getInt(null)
+        } catch (e: Exception) {
+            10008
+        }
+        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
+        method.invoke(appOps, op, Process.myUid(), context.packageName)
+        true
+    } catch (e: Exception) {
+        false
+    }
+}
+
+private fun hasAutostartPermission(context: Context): Boolean {
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    if (manufacturer !in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")) {
+        return true
+    }
+
+    try {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val op = try {
+            val field = AppOpsManager::class.java.getDeclaredField("OP_AUTO_START")
+            field.getInt(null)
+        } catch (e: Exception) {
+            10008
+        }
+
+        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
+        val mode = method.invoke(appOps, op, Process.myUid(), context.packageName) as Int
+        return mode == AppOpsManager.MODE_ALLOWED
+    } catch (e: Exception) {
+        return false
+    }
+}
+
 private fun openAutostartSettings(context: Context) {
     val intents = listOf(
         Intent().setComponent(android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
@@ -1865,6 +2030,17 @@ private fun hasBackgroundWindowPermission(context: Context): Boolean {
     
     try {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+
+        // 1. Try string op name if supported
+        try {
+            val mode = appOps.checkOpNoThrow("android:background_start_activity", Process.myUid(), context.packageName)
+            if (mode == AppOpsManager.MODE_ALLOWED) return true
+            if (mode == AppOpsManager.MODE_IGNORED || mode == AppOpsManager.MODE_ERRORED) return false
+        } catch (e: Exception) {
+            // Fall through to int op code
+        }
+
+        // 2. Try integer op code (10021 or OP_BACKGROUND_START_ACTIVITY field)
         val op = try {
             val field = AppOpsManager::class.java.getDeclaredField("OP_BACKGROUND_START_ACTIVITY")
             field.getInt(null)
@@ -1949,4 +2125,129 @@ private fun BackgroundWindowsGuideDialog(
             }
         }
     )
+}
+
+@Composable
+private fun SamsungBatteryGuideDialog(
+    onDismiss: () -> Unit,
+    onProceed: () -> Unit
+) {
+    val guideText = "1. You will be taken to Samsung Battery settings.\n" +
+        "2. Tap on 'Background usage limits'.\n" +
+        "3. Tap on 'Never sleeping apps'.\n" +
+        "4. Tap '+' and add 'FlowShift'.\n\n" +
+        "Alternatively:\n" +
+        "1. Go to Settings → Apps → FlowShift.\n" +
+        "2. Tap 'Battery'.\n" +
+        "3. Select 'Unrestricted'."
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceBlack,
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Text(
+                text = "Samsung Battery Settings",
+                fontFamily = AppFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp
+            )
+        },
+        text = {
+            Text(
+                text = guideText,
+                fontFamily = AppFontFamily,
+                fontSize = 15.sp,
+                lineHeight = 22.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onProceed,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Amber500,
+                    contentColor = SurfaceBlack
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "Let's do it",
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = "Cancel",
+                    color = TextMuted,
+                    fontFamily = AppFontFamily
+                )
+            }
+        }
+    )
+}
+
+private fun isBatteryOptimizationExempt(context: Context): Boolean {
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return false
+    return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+@SuppressLint("BatteryLife")
+private fun openBatteryOptimizationSettings(context: Context) {
+    try {
+        // Direct exemption request — shows a system dialog to the user
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        // Fallback: open the full battery optimization list
+        try {
+            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (e2: Exception) {
+            openAppSettings(context)
+        }
+    }
+}
+
+private fun openSamsungBatterySettings(context: Context) {
+    val intents = listOf(
+        // Samsung Device Care → Battery (One UI 4+)
+        Intent().setComponent(android.content.ComponentName(
+            "com.samsung.android.lool",
+            "com.samsung.android.sm.battery.ui.BatteryActivity"
+        )),
+        // Samsung Smart Manager (older Samsung)
+        Intent().setComponent(android.content.ComponentName(
+            "com.samsung.android.sm",
+            "com.samsung.android.sm.battery.ui.BatteryActivity"
+        )),
+        // Samsung Device Care main page
+        Intent().setComponent(android.content.ComponentName(
+            "com.samsung.android.lool",
+            "com.samsung.android.sm.ui.dashboard.SmartManagerDashBoardActivity"
+        ))
+    )
+
+    for (intent in intents) {
+        try {
+            if (context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null) {
+                context.startActivity(intent)
+                return
+            }
+        } catch (e: Exception) {
+            // Try next
+        }
+    }
+
+    // Fallback to generic battery settings
+    try {
+        context.startActivity(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))
+    } catch (e: Exception) {
+        openAppSettings(context)
+    }
 }

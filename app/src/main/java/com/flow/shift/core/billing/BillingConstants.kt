@@ -8,8 +8,13 @@ object BillingConstants {
 
     // Alternative: Single subscription product with multiple base plans
     const val PRODUCT_SUBSCRIPTION_GROUP = "flowshift_pro"
-    const val BASE_PLAN_MONTHLY = "monthly"
-    const val BASE_PLAN_YEARLY = "yearly"
+    // Base Plan IDs inside the subscription
+    const val BASE_PLAN_MONTHLY = "flowshift-monthly"
+    const val BASE_PLAN_YEARLY = "flowshift-yearly"
+
+    // Alternative short base plan IDs
+    const val ALT_BASE_PLAN_MONTHLY = "monthly"
+    const val ALT_BASE_PLAN_YEARLY = "yearly"
 
     // One-time In-App Product (Non-consumable)
     const val PRODUCT_LIFETIME = "flowshift_lifetime"

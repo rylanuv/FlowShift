@@ -214,6 +214,12 @@ class SettingsDataStore @Inject constructor(
         dataStore.edit { preferences ->
             preferences[IS_ONBOARDING_COMPLETED] = completed
         }
+        // Also write to SharedPreferences for synchronous access by BootReceiver
+        // and FlowShiftApplication.onCreate() (which can't use DataStore coroutines).
+        context.getSharedPreferences("settings_boot_check", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("is_onboarding_completed", completed)
+            .apply()
     }
 
     suspend fun setBlockingMode(mode: String) {
