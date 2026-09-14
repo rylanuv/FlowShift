@@ -63,7 +63,7 @@ fun ModesScreen(
                         .paint(
                             painter = painterResource(id = uiState.currentMode.backgroundImageRes),
                             contentScale = ContentScale.Crop,
-                            alpha = 0.9f
+                            alpha = uiState.currentMode.backgroundAlpha
                         )
                         .background(SurfaceBlack.copy(alpha = 0.25f))
                 } else {
@@ -102,7 +102,7 @@ fun ModesScreen(
                 description = "After the set screen time, hold for 90 seconds before you can proceed scrolling again.",
                 icon = Icons.Default.Timer,
                 accentColor = ModeEasyAccent,
-                bgAlpha = AmberGlow,
+                bgAlpha = ModeEasyBg,
                 isActive = uiState.currentMode == BlockingMode.EASY,
                 onClick = { viewModel.requestModeChange(BlockingMode.EASY) }
             )

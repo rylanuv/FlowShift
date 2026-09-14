@@ -46,7 +46,7 @@ object AdvancedMathProblemGenerator {
                 val s = a + b
                 val p = a * b
                 AdvancedMathProblem(
-                    question = "Largest root of\nxÂ² - ${s}x + $p = 0",
+                    question = "Largest root of\nx² - ${s}x + $p = 0",
                     answer = max(a, b).toString(),
                     topic = AdvancedMathTopic.POLYNOMIAL,
                     hint = "Factor the quadratic"
@@ -58,7 +58,7 @@ object AdvancedMathProblemGenerator {
                 val a = Random.nextInt(2, 6)
                 val signB = if (b >= 0) "+ $b" else "- ${abs(b)}"
                 AdvancedMathProblem(
-                    question = "f(x) = xÂ² $signB x + $c\nf($a) = ?",
+                    question = "f(x) = x² $signB x + $c\nf($a) = ?",
                     answer = (a * a + b * a + c).toString(),
                     topic = AdvancedMathTopic.POLYNOMIAL,
                     hint = "Substitute and simplify"
@@ -72,7 +72,7 @@ object AdvancedMathProblemGenerator {
                 val p = a * b + b * c + c * a
                 val q = a * b * c
                 AdvancedMathProblem(
-                    question = "Sum of roots of\nxÂ³ - ${s}xÂ² + ${p}x - $q = 0",
+                    question = "Sum of roots of\nx³ - ${s}x² + ${p}x - $q = 0",
                     answer = s.toString(),
                     topic = AdvancedMathTopic.POLYNOMIAL,
                     hint = "Vieta's formula: sum = -(-S)/1"
@@ -87,10 +87,10 @@ object AdvancedMathProblemGenerator {
                 val w = Random.nextInt(5, 16)
                 val h = Random.nextInt(5, 16)
                 AdvancedMathProblem(
-                    question = "Area of a $w Ã— $h rectangle",
+                    question = "Area of a $w × $h rectangle",
                     answer = (w * h).toString(),
                     topic = AdvancedMathTopic.GEOMETRY,
-                    hint = "Area = width Ã— height"
+                    hint = "Area = width × height"
                 )
             }
             MathDifficulty.MEDIUM -> {
@@ -101,7 +101,7 @@ object AdvancedMathProblemGenerator {
                     question = "Area of triangle\nbase = $b, height = $h",
                     answer = ((b * h) / 2).toString(),
                     topic = AdvancedMathTopic.GEOMETRY,
-                    hint = "Area = Â½ Ã— base Ã— height"
+                    hint = "Area = ½ × base × height"
                 )
             }
             MathDifficulty.HARD -> {
@@ -117,7 +117,7 @@ object AdvancedMathProblemGenerator {
                     question = "Right triangle sides: ${t.first}, ${t.second}\nHypotenuse = ?",
                     answer = t.third.toString(),
                     topic = AdvancedMathTopic.GEOMETRY,
-                    hint = "Use aÂ² + bÂ² = cÂ²"
+                    hint = "Use a² + b² = c²"
                 )
             }
             MathDifficulty.EXTREME -> {
@@ -128,7 +128,7 @@ object AdvancedMathProblemGenerator {
                     question = "Volume of box\nl=$l, w=$w, h=$h",
                     answer = (l * w * h).toString(),
                     topic = AdvancedMathTopic.GEOMETRY,
-                    hint = "V = l Ã— w Ã— h"
+                    hint = "V = l × w × h"
                 )
             }
         }
@@ -138,14 +138,14 @@ object AdvancedMathProblemGenerator {
         return when (difficulty) {
             MathDifficulty.EASY -> {
                 val problems = listOf(
-                    Triple("2 Ã— sin(30Â°)", 1, "sin(30Â°) = 0.5"),
-                    Triple("sin(90Â°)", 1, "sin(90Â°) = 1"),
-                    Triple("cos(0Â°)", 1, "cos(0Â°) = 1"),
-                    Triple("2 Ã— cos(60Â°)", 1, "cos(60Â°) = 0.5"),
-                    Triple("cos(90Â°)", 0, "cos(90Â°) = 0"),
-                    Triple("tan(0Â°)", 0, "tan(0Â°) = 0"),
-                    Triple("tan(45Â°)", 1, "tan(45Â°) = 1"),
-                    Triple("sin(0Â°)", 0, "sin(0Â°) = 0")
+                    Triple("2 × sin(30°)", 1, "sin(30°) = 0.5"),
+                    Triple("sin(90°)", 1, "sin(90°) = 1"),
+                    Triple("cos(0°)", 1, "cos(0°) = 1"),
+                    Triple("2 × cos(60°)", 1, "cos(60°) = 0.5"),
+                    Triple("cos(90°)", 0, "cos(90°) = 0"),
+                    Triple("tan(0°)", 0, "tan(0°) = 0"),
+                    Triple("tan(45°)", 1, "tan(45°) = 1"),
+                    Triple("sin(0°)", 0, "sin(0°) = 0")
                 )
                 val p = problems.random()
                 AdvancedMathProblem(
@@ -157,14 +157,14 @@ object AdvancedMathProblemGenerator {
             }
             MathDifficulty.MEDIUM -> {
                 val problems = listOf(
-                    Pair("sinÂ²(30Â°) + cosÂ²(30Â°)", 1),
-                    Pair("sinÂ²(45Â°) + cosÂ²(45Â°)", 1),
-                    Pair("sinÂ²(60Â°) + cosÂ²(60Â°)", 1),
-                    Pair("4 Ã— sin(30Â°) Ã— cos(60Â°)", 1),
-                    Pair("cosÂ²(0Â°) + sinÂ²(90Â°)", 2),
-                    Pair("tan(45Â°) Ã— sin(90Â°)", 1),
-                    Pair("2 Ã— sinÂ²(45Â°)", 1),
-                    Pair("2 Ã— cosÂ²(45Â°)", 1)
+                    Pair("sin²(30°) + cos²(30°)", 1),
+                    Pair("sin²(45°) + cos²(45°)", 1),
+                    Pair("sin²(60°) + cos²(60°)", 1),
+                    Pair("4 × sin(30°) × cos(60°)", 1),
+                    Pair("cos²(0°) + sin²(90°)", 2),
+                    Pair("tan(45°) × sin(90°)", 1),
+                    Pair("2 × sin²(45°)", 1),
+                    Pair("2 × cos²(45°)", 1)
                 )
                 val p = problems.random()
                 AdvancedMathProblem(
@@ -176,12 +176,12 @@ object AdvancedMathProblemGenerator {
             }
             MathDifficulty.HARD -> {
                 val problems = listOf(
-                    Pair("2 Ã— sin(45Â°) Ã— cos(45Â°)", 1),
-                    Pair("sinÂ²(90Â°) + cosÂ²(0Â°)", 2),
-                    Pair("3 Ã— tan(45Â°)", 3),
-                    Pair("4 Ã— sin(30Â°)", 2),
-                    Pair("cosÂ²(0Â°) - sinÂ²(0Â°)", 1),
-                    Pair("2 Ã— (sinÂ²(30Â°) + cosÂ²(30Â°))", 2)
+                    Pair("2 × sin(45°) × cos(45°)", 1),
+                    Pair("sin²(90°) + cos²(0°)", 2),
+                    Pair("3 × tan(45°)", 3),
+                    Pair("4 × sin(30°)", 2),
+                    Pair("cos²(0°) - sin²(0°)", 1),
+                    Pair("2 × (sin²(30°) + cos²(30°))", 2)
                 )
                 val p = problems.random()
                 AdvancedMathProblem(
@@ -193,12 +193,12 @@ object AdvancedMathProblemGenerator {
             }
             MathDifficulty.EXTREME -> {
                 val problems = listOf(
-                    Pair("(1 - cos(60Â°)) Ã— 4", 2),
-                    Pair("tan(45Â°) + sin(90Â°) + cos(0Â°)", 3),
-                    Pair("4 Ã— (sinÂ²(45Â°) + cosÂ²(45Â°))", 4),
-                    Pair("sin(90Â°) + 2 Ã— sin(30Â°) + tan(45Â°)", 3),
-                    Pair("(sin(30Â°) + cos(60Â°)) Ã— 2", 2),
-                    Pair("5 Ã— tan(45Â°) - cos(0Â°)", 4)
+                    Pair("(1 - cos(60°)) × 4", 2),
+                    Pair("tan(45°) + sin(90°) + cos(0°)", 3),
+                    Pair("4 × (sin²(45°) + cos²(45°))", 4),
+                    Pair("sin(90°) + 2 × sin(30°) + tan(45°)", 3),
+                    Pair("(sin(30°) + cos(60°)) × 2", 2),
+                    Pair("5 × tan(45°) - cos(0°)", 4)
                 )
                 val p = problems.random()
                 AdvancedMathProblem(
@@ -226,30 +226,30 @@ object AdvancedMathProblemGenerator {
                 val c = Random.nextInt(2, 6)
                 val a = Random.nextInt(1, 5)
                 AdvancedMathProblem(
-                    question = "d/dx(${c}xÂ²) at x=$a\n= ?",
+                    question = "d/dx(${c}x²) at x=$a\n= ?",
                     answer = (2 * c * a).toString(),
                     topic = AdvancedMathTopic.CALCULUS,
-                    hint = "Power rule: d/dx(cxÂ²) = 2cx"
+                    hint = "Power rule: d/dx(cx²) = 2cx"
                 )
             }
             MathDifficulty.HARD -> {
                 val c = Random.nextInt(1, 4)
                 val a = Random.nextInt(1, 4)
                 AdvancedMathProblem(
-                    question = "d/dx(${c}xÂ³) at x=$a\n= ?",
+                    question = "d/dx(${c}x³) at x=$a\n= ?",
                     answer = (3 * c * a * a).toString(),
                     topic = AdvancedMathTopic.CALCULUS,
-                    hint = "Power rule: d/dx(cxÂ³) = 3cxÂ²"
+                    hint = "Power rule: d/dx(cx³) = 3cx²"
                 )
             }
             MathDifficulty.EXTREME -> {
                 val c = Random.nextInt(1, 4)
                 val a = Random.nextInt(1, 5)
                 AdvancedMathProblem(
-                    question = "dÂ²/dxÂ²(${c}xÂ³) at x=$a\n= ?",
+                    question = "d²/dx²(${c}x³) at x=$a\n= ?",
                     answer = (6 * c * a).toString(),
                     topic = AdvancedMathTopic.CALCULUS,
-                    hint = "First: 3cxÂ², then: 6cx"
+                    hint = "First: 3cx², then: 6cx"
                 )
             }
         }
@@ -275,7 +275,7 @@ object AdvancedMathProblemGenerator {
                 val c = Random.nextInt(1, 7)
                 val d = Random.nextInt(1, 7)
                 AdvancedMathProblem(
-                    question = "det | $a  $b |\n    | $c  $d |\n= ?",
+                    question = "Determinant of\n| $a  $b |\n| $c  $d |",
                     answer = (a * d - b * c).toString(),
                     topic = AdvancedMathTopic.MATRIX,
                     hint = "det = ad - bc"
@@ -291,10 +291,10 @@ object AdvancedMathProblemGenerator {
                 val b3 = Random.nextInt(1, 5)
                 val b4 = Random.nextInt(1, 5)
                 AdvancedMathProblem(
-                    question = "AÃ—B element [1,1]\nA=|$a1 $a2|  B=|$b1 $b2|\n  |$a3 $a4|    |$b3 $b4|",
+                    question = "A×B element [1,1]\nMatrix A:      Matrix B:\n| $a1  $a2 |    | $b1  $b2 |\n| $a3  $a4 |    | $b3  $b4 |",
                     answer = (a1 * b1 + a2 * b3).toString(),
                     topic = AdvancedMathTopic.MATRIX,
-                    hint = "Row Ã— Column: a1Ã—b1 + a2Ã—b3"
+                    hint = "Row × Column: a1×b1 + a2×b3"
                 )
             }
             MathDifficulty.EXTREME -> {
@@ -309,7 +309,7 @@ object AdvancedMathProblemGenerator {
                 val i = Random.nextInt(0, 4)
                 val det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
                 AdvancedMathProblem(
-                    question = "det | $a $b $c |\n    | $d $e $f |\n    | $g $h $i |\n= ?",
+                    question = "Determinant of\n| $a  $b  $c |\n| $d  $e  $f |\n| $g  $h  $i |",
                     answer = det.toString(),
                     topic = AdvancedMathTopic.MATRIX,
                     hint = "Expand along first row"
@@ -324,7 +324,7 @@ object AdvancedMathProblemGenerator {
                 val n = Random.nextInt(1, 7)
                 val valPower = (1 shl n)
                 AdvancedMathProblem(
-                    question = "logâ‚‚($valPower) = ?",
+                    question = "log₂($valPower) = ?",
                     answer = n.toString(),
                     topic = AdvancedMathTopic.LOGARITHM,
                     hint = "2 to what power gives val?"
@@ -336,7 +336,7 @@ object AdvancedMathProblemGenerator {
                     val n = Random.nextInt(1, 5)
                     val v = 3.0.pow(n.toDouble()).toInt()
                     AdvancedMathProblem(
-                        question = "logâ‚ƒ($v) = ?",
+                        question = "log₃($v) = ?",
                         answer = n.toString(),
                         topic = AdvancedMathTopic.LOGARITHM,
                         hint = "base to what power gives val?"
@@ -345,7 +345,7 @@ object AdvancedMathProblemGenerator {
                     val n = Random.nextInt(1, 4)
                     val v = 5.0.pow(n.toDouble()).toInt()
                     AdvancedMathProblem(
-                        question = "logâ‚…($v) = ?",
+                        question = "log₅($v) = ?",
                         answer = n.toString(),
                         topic = AdvancedMathTopic.LOGARITHM,
                         hint = "base to what power gives val?"
@@ -359,20 +359,20 @@ object AdvancedMathProblemGenerator {
                 val logA = when (a) { 2 -> 1; 4 -> 2; 8 -> 3; else -> 4 }
                 val logB = when (b) { 2 -> 1; 4 -> 2; 8 -> 3; else -> 4 }
                 AdvancedMathProblem(
-                    question = "logâ‚‚($a) + logâ‚‚($b) = ?",
+                    question = "log₂($a) + log₂($b) = ?",
                     answer = (logA + logB).toString(),
                     topic = AdvancedMathTopic.LOGARITHM,
-                    hint = "logâ‚‚(a) + logâ‚‚(b) = logâ‚‚(aÃ—b)"
+                    hint = "log₂(a) + log₂(b) = log₂(a×b)"
                 )
             }
             MathDifficulty.EXTREME -> {
                 val a = Random.nextInt(1, 4)
                 val b = Random.nextInt(1, 4)
                 AdvancedMathProblem(
-                    question = "logâ‚â‚€(10^$a Ã— 10^$b) = ?",
+                    question = "log₁₀(10^$a × 10^$b) = ?",
                     answer = (a + b).toString(),
                     topic = AdvancedMathTopic.LOGARITHM,
-                    hint = "log(xÃ—y) = log(x) + log(y)"
+                    hint = "log(x×y) = log(x) + log(y)"
                 )
             }
         }
@@ -387,7 +387,7 @@ object AdvancedMathProblemGenerator {
                     question = "C($n,$r) = ?",
                     answer = nCr(n, r).toString(),
                     topic = AdvancedMathTopic.PROBABILITY,
-                    hint = "C(n,r) = n! / (r! Ã— (n-r)!)"
+                    hint = "C(n,r) = n! / (r! × (n-r)!)"
                 )
             }
             MathDifficulty.MEDIUM -> {
@@ -406,7 +406,7 @@ object AdvancedMathProblemGenerator {
                     question = "$n! = ?",
                     answer = fact(n).toString(),
                     topic = AdvancedMathTopic.PROBABILITY,
-                    hint = "n Ã— (n-1) Ã— ... Ã— 1"
+                    hint = "n × (n-1) × ... × 1"
                 )
             }
             MathDifficulty.EXTREME -> {
@@ -465,7 +465,7 @@ object AdvancedMathProblemGenerator {
                     question = "Sum of first $n terms\nGP: $a, ${a * r}, ${a * r * r}, ...",
                     answer = sum.toString(),
                     topic = AdvancedMathTopic.SEQUENCE,
-                    hint = "Sum = a(râ¿ - 1)/(r - 1)"
+                    hint = "Sum = a(rⁿ - 1)/(r - 1)"
                 )
             }
         }

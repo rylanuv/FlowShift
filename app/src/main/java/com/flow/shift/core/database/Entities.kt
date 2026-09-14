@@ -43,3 +43,11 @@ data class UserGamificationEntity(
     val scrollCredits: Int
 )
 
+@Entity(tableName = "reel_events")
+data class ReelEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val timestamp: Long,
+    val packageName: String
+)
+
+

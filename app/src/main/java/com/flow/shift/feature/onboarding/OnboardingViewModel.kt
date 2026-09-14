@@ -54,10 +54,10 @@ class OnboardingViewModel @Inject constructor(
     )
     val selectedMode: StateFlow<BlockingMode> = _selectedMode.asStateFlow()
 
-    private val _selectedChallengeType = MutableStateFlow(savedStateHandle.get<String>("selectedChallengeType") ?: "PUSHUPS")
+    private val _selectedChallengeType = MutableStateFlow(savedStateHandle.get<String>("selectedChallengeType") ?: "MATH")
     val selectedChallengeType: StateFlow<String> = _selectedChallengeType.asStateFlow()
 
-    private val _challengeAmount = MutableStateFlow(savedStateHandle.get<Int>("challengeAmount") ?: 15)
+    private val _challengeAmount = MutableStateFlow(savedStateHandle.get<Int>("challengeAmount") ?: 5)
     val challengeAmount: StateFlow<Int> = _challengeAmount.asStateFlow()
 
     // ── Step 5: App Selection ──

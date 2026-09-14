@@ -9,9 +9,10 @@ import androidx.room.TypeConverters
         BlockedAppEntity::class,
         WorkoutSessionEntity::class,
         UserGamificationEntity::class,
-        InterventionEntity::class
+        InterventionEntity::class,
+        ReelEventEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -20,5 +21,6 @@ abstract class FlowShiftDatabase : RoomDatabase() {
     abstract fun workoutSessionDao(): WorkoutSessionDao
     abstract fun userGamificationDao(): UserGamificationDao
     abstract fun interventionDao(): InterventionDao
+    abstract fun reelEventDao(): ReelEventDao
 }
 

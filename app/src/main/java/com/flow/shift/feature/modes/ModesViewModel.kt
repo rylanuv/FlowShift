@@ -153,7 +153,7 @@ class ModesViewModel @Inject constructor(
 data class ModesUiState(
     val currentMode: BlockingMode = BlockingMode.EASY,
     val lastDowngradeTimeMillis: Long = 0L,
-    val strictChallengeType: String = "PUSHUPS",
+    val strictChallengeType: String = "MATH",
     val downgradeRequestTimeMillis: Long = 0L,
     val downgradeRequestTarget: String? = null,
     val autoDowngradeAtMidnight: Boolean = false,

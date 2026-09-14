@@ -38,10 +38,12 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import kotlin.math.roundToInt
 import androidx.compose.ui.layout.layout
 import android.widget.Toast
 import java.text.DateFormat
+import com.flow.shift.core.designsystem.ReelCountExplainerDialog
 import java.util.Date
 import java.util.Calendar
 import androidx.compose.ui.zIndex
@@ -100,7 +102,7 @@ fun SettingsScreen(
                         .paint(
                             painter = painterResource(id = currentMode.backgroundImageRes),
                             contentScale = ContentScale.Crop,
-                            alpha = 0.9f
+                            alpha = currentMode.backgroundAlpha
                         )
                         .background(SurfaceBlack.copy(alpha = 0.25f))
                 } else {
@@ -225,10 +227,13 @@ fun SettingsScreen(
             SettingsToggleRow(
                 icon = Icons.Default.Pin,
                 label = "Show Reel Count",
-                checked = state.appearance.showReelCount,
+                checked = state.appearance.showReelCount && isPremium,
                 subtitle = "Display reel count on top of screen",
+                isLocked = !isPremium,
                 onCheckedChange = { isChecked -> 
-                    if (isChecked) {
+                    if (!isPremium) {
+                        showReelCountExplainerDialog = true
+                    } else if (isChecked) {
                         showReelCountExplainerDialog = true
                     } else {
                         viewModel.setShowReelCount(false)
@@ -586,6 +591,7 @@ fun SettingsScreen(
         
         if (showReelCountExplainerDialog) {
             ReelCountExplainerDialog(
+                isPremium = isPremium,
                 onDismiss = { showReelCountExplainerDialog = false },
                 onEnableClick = {
                     if (isPremium) {
@@ -959,16 +965,45 @@ private fun SettingsSection(
 }
 
 @Composable
+private fun ProBadge(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(PremiumGold.copy(alpha = 0.15f))
+            .border(1.dp, PremiumGold.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+    ) {
+        Text(
+            text = "PRO",
+            color = PremiumGold,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 0.5.sp,
+            maxLines = 1,
+            softWrap = false
+        )
+    }
+}
+
+@Composable
 private fun SettingsToggleRow(
     icon: ImageVector?,
     label: String,
     checked: Boolean,
     subtitle: String? = null,
+    isLocked: Boolean = false,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { onCheckedChange(!checked) }
+            )
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -982,13 +1017,20 @@ private fun SettingsToggleRow(
             Spacer(modifier = Modifier.width(8.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                color = TextPrimary,
-                fontFamily = AppFontFamily,
-                fontSize = 16.sp,
-                lineHeight = 20.sp
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = label,
+                    color = TextPrimary,
+                    fontFamily = AppFontFamily,
+                    fontSize = 16.sp,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (isLocked) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    ProBadge()
+                }
+            }
             if (subtitle != null) {
                 Text(
                     text = subtitle,
@@ -1047,7 +1089,7 @@ private fun SegmentedControl(
                     .background(backgroundColor)
                     .then(borderModifier)
                     .clickable { onOptionSelected(option.text) }
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 12.dp, horizontal = 4.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1055,32 +1097,21 @@ private fun SegmentedControl(
                     imageVector = option.icon,
                     contentDescription = null,
                     tint = contentColor,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = option.text,
                     color = contentColor,
-                    fontSize = 14.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    fontSize = 13.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 if (option.isLocked) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(PremiumGold.copy(alpha = 0.15f))
-                            .border(1.dp, PremiumGold.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
-                    ) {
-                        Text(
-                            text = "PRO",
-                            color = PremiumGold,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(5.dp))
+                    ProBadge()
                 }
             }
         }
@@ -1199,196 +1230,3 @@ private fun ChallengeCard(
     }
 }
 
-@Composable
-private fun ReelCountExplainerDialog(
-    onDismiss: () -> Unit,
-    onEnableClick: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SurfaceCard,
-        titleContentColor = TextPrimary,
-        textContentColor = TextSecondary,
-        title = { Text("Reel Count Badge", fontFamily = AppFontFamily) },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Visual explainer: Portrait phone mockup with floating badge overlay
-                Box(
-                    modifier = Modifier
-                        .width(146.dp)
-                        .height(210.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF22222A),
-                                    Color(0xFF15151B),
-                                    Color(0xFF0C0C0F)
-                                )
-                            )
-                        )
-                        .border(1.5.dp, Color(0xFF2C2C36), RoundedCornerShape(20.dp))
-                ) {
-                    // Subtle video glow
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.radialGradient(
-                                    colors = listOf(
-                                        Amber500.copy(alpha = 0.08f),
-                                        Color.Transparent
-                                    ),
-                                    radius = 240f
-                                )
-                            )
-                    )
-
-                    // Top phone speaker/notch
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 6.dp)
-                            .width(28.dp)
-                            .height(3.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.2f))
-                    )
-
-                    // Floating Reel Count Badge Overlay (centered below top notch)
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 16.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xF2121215))
-                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(50))
-                            .padding(horizontal = 7.dp, vertical = 3.5.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = "⚠️",
-                                fontSize = 9.sp
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Reels Scrolled: ",
-                                color = Color(0xFFCCCCCC),
-                                fontSize = 9.sp,
-                                fontFamily = AppFontFamily,
-                                fontWeight = FontWeight.Normal
-                            )
-                            Text(
-                                text = "142",
-                                color = DangerRed,
-                                fontSize = 9.5.sp,
-                                fontFamily = AppFontFamily,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    // Reel UI mockup - right side interaction buttons
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 8.dp, bottom = 26.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.4f),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Comment,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.4f),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.4f),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-
-                    // Reel UI mockup - bottom left creator & caption placeholders
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 10.dp, bottom = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(14.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.35f))
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Box(
-                                modifier = Modifier
-                                    .width(38.dp)
-                                    .height(5.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Color.White.copy(alpha = 0.35f))
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .width(56.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color.White.copy(alpha = 0.2f))
-                        )
-                    }
-
-                    // Bottom phone home bar
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 4.dp)
-                            .width(34.dp)
-                            .height(2.5.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.25f))
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Shows how many reels you've scrolled on top of your apps to help bring awareness and break the flow.",
-                    fontFamily = AppFontFamily,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onEnableClick,
-                colors = ButtonDefaults.buttonColors(containerColor = Amber500, contentColor = Color.White)
-            ) {
-                Text("Enable")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                colors = ButtonDefaults.textButtonColors(contentColor = TextMuted)
-            ) {
-                Text("Cancel")
-            }
-        }
-    )
-}

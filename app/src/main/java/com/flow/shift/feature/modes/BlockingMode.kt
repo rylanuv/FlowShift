@@ -7,10 +7,15 @@ import com.flow.shift.R
  * Each mode has a [level] that determines upgrade/downgrade direction.
  * Higher level = stricter mode.
  */
-enum class BlockingMode(val level: Int, val displayName: String, val backgroundImageRes: Int) {
-    EASY(1, "Easy", R.drawable.main_screen),
-    STRICT(2, "Discipline", R.drawable.strict_home),
-    HARDCORE(3, "Hardcore", R.drawable.hardcore_home);
+enum class BlockingMode(
+    val level: Int,
+    val displayName: String,
+    val backgroundImageRes: Int,
+    val backgroundAlpha: Float
+) {
+    EASY(1, "Easy", R.drawable.main_screen, 0.70f),
+    STRICT(2, "Discipline", R.drawable.strict_home, 0.60f),
+    HARDCORE(3, "Hardcore", R.drawable.hardcore_home, 0.80f);
 
     fun isUpgradeFrom(other: BlockingMode) = this.level > other.level
     fun isDowngradeFrom(other: BlockingMode) = this.level < other.level

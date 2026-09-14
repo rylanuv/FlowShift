@@ -62,6 +62,7 @@ fun TroubleshootScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val isRealme = Build.MANUFACTURER.equals("realme", ignoreCase = true)
     
     var hasUsagePermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
@@ -80,11 +81,12 @@ fun TroubleshootScreen(
     }
 
     val isChineseOEM = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+    val needsAutostartGuidance = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "vivo", "iqoo")
     val autostartCheckSupported = remember { canCheckAutostart(context) }
     var userInteractedAutostart by remember { mutableStateOf(false) }
     var hasAutostartPermission by remember {
         mutableStateOf(
-            if (!isChineseOEM) true
+            if (!needsAutostartGuidance) true
             else if (autostartCheckSupported) hasAutostartPermission(context)
             else false
         )
@@ -106,9 +108,9 @@ fun TroubleshootScreen(
             hasBatteryOptimizationExemption = isBatteryOptimizationExempt(context)
             if (isChineseOEM) {
                 hasBackgroundWindowsPermission = hasBackgroundWindowPermission(context)
-                if (autostartCheckSupported) {
+                if (needsAutostartGuidance && autostartCheckSupported) {
                     hasAutostartPermission = hasAutostartPermission(context)
-                } else if (userInteractedAutostart) {
+                } else if (needsAutostartGuidance && userInteractedAutostart) {
                     hasAutostartPermission = true
                 }
             }
@@ -347,7 +349,7 @@ fun TroubleshootScreen(
                 )
             }
 
-            if (isChineseOEM) {
+            if (needsAutostartGuidance) {
                 item {
                     PermissionItem(
                         icon = Icons.Default.Settings,
@@ -360,12 +362,18 @@ fun TroubleshootScreen(
                         }
                     )
                 }
+            }
 
+            if (isChineseOEM) {
                 item {
                     PermissionItem(
                         icon = Icons.Default.OpenInNew,
-                        title = "Background Windows",
-                        description = "Allows FlowShift to open the blocker from the background.",
+                        title = if (isRealme) "Allow Background Activity" else "Background Windows",
+                        description = if (isRealme) {
+                            "Opens Battery usage, where you can keep FlowShift running in the background."
+                        } else {
+                            "Allows FlowShift to open the blocker from the background."
+                        },
                         isGranted = hasBackgroundWindowsPermission,
                         onClick = {
                             openBackgroundWindowsSettings(context)
@@ -696,6 +704,12 @@ private fun hasBackgroundWindowPermission(context: Context): Boolean {
 }
 
 private fun openBackgroundWindowsSettings(context: Context) {
+    if (Build.MANUFACTURER.equals("realme", ignoreCase = true)) {
+        // Realme exposes this control under the app's Battery usage page.
+        openAppSettings(context)
+        return
+    }
+
     try {
         val intent = Intent("miui.intent.action.APP_PERM_EDITOR").apply {
             setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
@@ -754,5 +768,3 @@ private fun openBatteryOptimizationSettings(context: Context) {
         }
     }
 }
-
-

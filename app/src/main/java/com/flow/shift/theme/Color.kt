@@ -14,7 +14,7 @@ val Pink40 = Color(0xFF7D5260)
 val Amber500 = Color(0xFFF59E0B)
 val Amber600 = Color(0xFFD97706)
 val Amber700 = Color(0xFFB45309)
-val AmberGlow = Color(0x33F59E0B) // 20% alpha for glow effects
+val AmberGlow = Color(0x14F59E0B) // 8% alpha for glow effects
 
 val StatusGreen = Color(0xFF22C55E)
 val StatusRed = Color(0xFFEF4444)
@@ -37,6 +37,7 @@ val OrangeGlow = Color(0x26F59E0B)            // 15% alpha amber for icon backgr
 val ModeEasyAccent = Amber500                 // Reuses existing amber
 val ModeStrictAccent = Color(0xFFFF6B35)      // Vivid orange
 val ModeHardcoreAccent = Color(0xFFEF4444)    // Red
-val ModeStrictBg = Color(0x33FF6B35)          // 20% alpha orange
-val ModeHardcoreBg = Color(0x33EF4444)        // 20% alpha red
+val ModeEasyBg = Color(0x14F59E0B)            // 8% alpha amber
+val ModeStrictBg = Color(0x14FF6B35)          // 8% alpha orange
+val ModeHardcoreBg = Color(0x14EF4444)        // 8% alpha red
 

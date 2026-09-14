@@ -62,6 +62,9 @@ class BillingRepository @Inject constructor(
 
     private var reconnectAttempts = 0
     private val maxReconnectAttempts = 5
+    
+    private var queryAttempts = 0
+    private val maxQueryAttempts = 3
 
     init {
         startConnection()
@@ -149,6 +152,20 @@ class BillingRepository @Inject constructor(
 
             val inAppResult = billingClient.queryProductDetails(inAppParams)
 
+            if (subResult.billingResult.responseCode != BillingClient.BillingResponseCode.OK ||
+                inAppResult.billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                Log.e(TAG, "queryProducts failed: sub=${subResult.billingResult.debugMessage}, inapp=${inAppResult.billingResult.debugMessage}")
+                if (queryAttempts < maxQueryAttempts) {
+                    queryAttempts++
+                    repositoryScope.launch {
+                        delay(2000L * queryAttempts)
+                        queryProducts()
+                    }
+                }
+                return
+            }
+            queryAttempts = 0
+
             val subDetails = subResult.productDetailsList.orEmpty()
             val inAppDetails = inAppResult.productDetailsList.orEmpty()
 
@@ -157,6 +174,13 @@ class BillingRepository @Inject constructor(
             updatePlansFromDetails(subDetails, inAppDetails)
         } catch (e: Exception) {
             Log.e(TAG, "Error querying products from Google Play", e)
+            if (queryAttempts < maxQueryAttempts) {
+                queryAttempts++
+                repositoryScope.launch {
+                    delay(2000L * queryAttempts)
+                    queryProducts()
+                }
+            }
         }
     }
 
@@ -169,7 +193,8 @@ class BillingRepository @Inject constructor(
         // Gather all offers across all subscription products
         val allSubOffers = subDetails.flatMap { product ->
             product.subscriptionOfferDetails.orEmpty().map { offer ->
-                Triple(product, offer, offer.pricingPhases.pricingPhaseList.firstOrNull()?.formattedPrice)
+                val recurringPhase = offer.pricingPhases.pricingPhaseList.lastOrNull()
+                Triple(product, offer, recurringPhase?.formattedPrice)
             }
         }
 
@@ -185,7 +210,7 @@ class BillingRepository @Inject constructor(
         } ?: run {
             val prod = subDetails.find { it.productId == BillingConstants.PRODUCT_MONTHLY }
             val offer = prod?.subscriptionOfferDetails?.firstOrNull()
-            val price = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice
+            val price = offer?.pricingPhases?.pricingPhaseList?.lastOrNull()?.formattedPrice
             if (prod != null && offer != null && price != null) Triple(prod, offer, price) else null
         }
 
@@ -214,7 +239,7 @@ class BillingRepository @Inject constructor(
         } ?: run {
             val prod = subDetails.find { it.productId == BillingConstants.PRODUCT_YEARLY }
             val offer = prod?.subscriptionOfferDetails?.firstOrNull()
-            val price = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice
+            val price = offer?.pricingPhases?.pricingPhaseList?.lastOrNull()?.formattedPrice
             if (prod != null && offer != null && price != null) Triple(prod, offer, price) else null
         }
 
@@ -346,6 +371,9 @@ class BillingRepository @Inject constructor(
         for (purchase in purchases) {
             when (purchase.purchaseState) {
                 Purchase.PurchaseState.PURCHASED -> {
+                    // Grant premium immediately to avoid locking user out if ack network call fails
+                    anyPurchased = true
+                    
                     if (!purchase.isAcknowledged) {
                         val acknowledgeParams = AcknowledgePurchaseParams.newBuilder()
                             .setPurchaseToken(purchase.purchaseToken)
@@ -353,12 +381,9 @@ class BillingRepository @Inject constructor(
                         val ackResult = billingClient.acknowledgePurchase(acknowledgeParams)
                         if (ackResult.responseCode == BillingClient.BillingResponseCode.OK) {
                             Log.d(TAG, "Successfully acknowledged purchase: ${purchase.orderId}")
-                            anyPurchased = true
                         } else {
-                            Log.e(TAG, "Failed to acknowledge purchase: ${ackResult.debugMessage}")
+                            Log.e(TAG, "Failed to acknowledge purchase: ${ackResult.debugMessage}. Will retry on next sync.")
                         }
-                    } else {
-                        anyPurchased = true
                     }
                 }
                 Purchase.PurchaseState.PENDING -> {
@@ -404,6 +429,12 @@ class BillingRepository @Inject constructor(
             val subsResult = billingClient.queryPurchasesAsync(subsParams)
             val inAppResult = billingClient.queryPurchasesAsync(inAppParams)
 
+            if (subsResult.billingResult.responseCode != BillingClient.BillingResponseCode.OK ||
+                inAppResult.billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                _purchaseState.value = BillingPurchaseState.Error("Failed to query Play Store to restore purchases.")
+                return
+            }
+
             val allPurchases = (subsResult.purchasesList.orEmpty() + inAppResult.purchasesList.orEmpty())
             val activePurchases = allPurchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
 
@@ -443,19 +474,28 @@ class BillingRepository @Inject constructor(
             val subsResult = billingClient.queryPurchasesAsync(subsParams)
             val inAppResult = billingClient.queryPurchasesAsync(inAppParams)
 
+            if (subsResult.billingResult.responseCode != BillingClient.BillingResponseCode.OK ||
+                inAppResult.billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                Log.e(TAG, "Failed to query purchases during sync. Response codes: subs=${subsResult.billingResult.responseCode}, inapp=${inAppResult.billingResult.responseCode}")
+                return // Do not revoke premium if the query failed
+            }
+
             val allPurchases = (subsResult.purchasesList.orEmpty() + inAppResult.purchasesList.orEmpty())
             val activePurchases = allPurchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
 
             if (activePurchases.isNotEmpty()) {
+                settingsDataStore.setIsPremium(true) // Set premium immediately
                 for (purchase in activePurchases) {
                     if (!purchase.isAcknowledged) {
                         val acknowledgeParams = AcknowledgePurchaseParams.newBuilder()
                             .setPurchaseToken(purchase.purchaseToken)
                             .build()
-                        billingClient.acknowledgePurchase(acknowledgeParams)
+                        val ackResult = billingClient.acknowledgePurchase(acknowledgeParams)
+                        if (ackResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                            Log.e(TAG, "Failed to acknowledge purchase during sync: ${ackResult.debugMessage}")
+                        }
                     }
                 }
-                settingsDataStore.setIsPremium(true)
             } else {
                 val pretendSubscribed = settingsDataStore.pretendSubscribed.first()
                 if (!pretendSubscribed) {

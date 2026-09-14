@@ -62,3 +62,25 @@ interface UserGamificationDao {
     fun insertOrUpdate(gamification: UserGamificationEntity)
 }
 
+@Dao
+interface ReelEventDao {
+    @Query("SELECT * FROM reel_events ORDER BY timestamp DESC")
+    fun getAllReelEvents(): Flow<List<ReelEventEntity>>
+
+    @Query("SELECT * FROM reel_events WHERE timestamp >= :startTimeMillis ORDER BY timestamp DESC")
+    fun getReelEventsSince(startTimeMillis: Long): Flow<List<ReelEventEntity>>
+
+    @Query("SELECT COUNT(*) FROM reel_events WHERE timestamp >= :startTimeMillis")
+    fun getTotalReelsSince(startTimeMillis: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM reel_events")
+    fun getCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertReelEvent(event: ReelEventEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAll(events: List<ReelEventEntity>)
+}
+
+

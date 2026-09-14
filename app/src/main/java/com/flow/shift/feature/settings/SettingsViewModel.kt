@@ -347,9 +347,9 @@ data class AppearanceState(
 data class ChallengeState(
     val difficulty: String = "Medium",
     val randomizeChallenges: Boolean = true,
-    val challengeType: String = "PUSHUPS",
-    val challengeAmount: Int = 15,
-    val advancedMathTopics: Set<String> = setOf("POLYNOMIAL")
+    val challengeType: String = "MATH",
+    val challengeAmount: Int = 5,
+    val advancedMathTopics: Set<String> = setOf("RANDOM")
 )
 
 data class BlockedAppInfo(

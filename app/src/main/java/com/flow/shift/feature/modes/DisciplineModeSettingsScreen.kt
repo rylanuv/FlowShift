@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,11 +59,12 @@ fun DisciplineModeSettingsScreen(
 
     val typeOptions = listOf(
         "MATH" to "Maths",
-        "PUSHUPS" to "Push-ups",
         "ADVANCED_MATH" to "Advanced Maths",
+        "PUSHUPS" to "Push-ups",
         "SQUATS" to "Squats",
         "CHARGE_PHONE" to "Charge Your Phone"
     )
+
 
 
 
@@ -111,6 +113,8 @@ fun DisciplineModeSettingsScreen(
             onResult = { granted ->
                 if (granted) {
                     pendingCameraChallenge?.let { viewModel.setStrictChallengeType(it) }
+                } else {
+                    android.widget.Toast.makeText(context, "Camera permission is required to track reps using AI.", android.widget.Toast.LENGTH_LONG).show()
                 }
                 pendingCameraChallenge = null
             }
@@ -178,7 +182,7 @@ fun DisciplineModeSettingsScreen(
                             text = { 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(label, color = TextPrimary)
-                                    if (type != "MATH" && type != "PUSHUPS" && !isPremium) {
+                                    if (type != "MATH" && !isPremium) {
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Icon(
                                             imageVector = Icons.Default.WorkspacePremium,
@@ -190,7 +194,7 @@ fun DisciplineModeSettingsScreen(
                                 }
                             },
                             onClick = {
-                                if (type != "MATH" && type != "PUSHUPS" && !isPremium) {
+                                if (type != "MATH" && !isPremium) {
                                     onNavigateToSubscription()
                                 } else if (type == "PUSHUPS" || type == "SQUATS") {
                                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -260,6 +264,7 @@ fun DisciplineModeSettingsScreen(
                 )
                 
                 val topics = listOf(
+                    "RANDOM" to "Random",
                     "POLYNOMIAL" to "Polynomial",
                     "GEOMETRY" to "Geometry",
                     "TRIGONOMETRY" to "Trigonometry",
@@ -314,13 +319,19 @@ fun DisciplineModeSettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Amount",
+                    text = if (challengeType == "CHARGE_PHONE") "Charging Time" else "Amount",
                     color = TextPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+                val amountUnit = when (challengeType) {
+                    "CHARGE_PHONE" -> if (challengeAmount == 1) "minute" else "minutes"
+                    "MATH", "ADVANCED_MATH" -> if (challengeAmount == 1) "problem" else "problems"
+                    "PUSHUPS", "SQUATS" -> if (challengeAmount == 1) "rep" else "reps"
+                    else -> if (challengeAmount == 1) "rep" else "reps"
+                }
                 Text(
-                    text = "$challengeAmount reps/problems",
+                    text = "$challengeAmount $amountUnit",
                     color = ModeStrictAccent,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
@@ -343,8 +354,18 @@ fun DisciplineModeSettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("1", color = TextSecondary, fontSize = 12.sp)
-                Text("100", color = TextSecondary, fontSize = 12.sp)
+                val minText = when (challengeType) {
+                    "CHARGE_PHONE" -> "1 min"
+                    "MATH", "ADVANCED_MATH" -> "1 prob"
+                    else -> "1 rep"
+                }
+                val maxText = when (challengeType) {
+                    "CHARGE_PHONE" -> "100 mins"
+                    "MATH", "ADVANCED_MATH" -> "100 probs"
+                    else -> "100 reps"
+                }
+                Text(minText, color = TextSecondary, fontSize = 12.sp)
+                Text(maxText, color = TextSecondary, fontSize = 12.sp)
             }
         }
 

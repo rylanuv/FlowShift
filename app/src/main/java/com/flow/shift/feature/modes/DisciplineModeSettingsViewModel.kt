@@ -10,6 +10,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 @HiltViewModel
@@ -20,7 +24,7 @@ class DisciplineModeSettingsViewModel @Inject constructor(
     val isPremium: StateFlow<Boolean> = settingsDataStore.isPremium
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
+            started = SharingStarted.Eagerly,
             initialValue = false
         )
 
@@ -36,12 +40,15 @@ class DisciplineModeSettingsViewModel @Inject constructor(
         initialValue = "MATH"
     )
 
-    private val _draftChallengeAmount = MutableStateFlow<Int?>(null)
-    val strictChallengeAmount: StateFlow<Int> = combine(
-        settingsDataStore.strictChallengeAmount,
-        _draftChallengeAmount
-    ) { saved, draft ->
-        draft ?: saved
+    private val _draftChallengeAmounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val strictChallengeAmount: StateFlow<Int> = strictChallengeType.flatMapLatest { type ->
+        combine(
+            settingsDataStore.getChallengeAmountForTypeFlow(type),
+            _draftChallengeAmounts.map { it[type] }
+        ) { saved, draft ->
+            draft ?: saved
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -81,15 +88,30 @@ class DisciplineModeSettingsViewModel @Inject constructor(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
-        initialValue = setOf("POLYNOMIAL")
+        initialValue = setOf("RANDOM")
     )
 
     fun setStrictChallengeType(type: String) {
-        _draftChallengeType.value = type
+        viewModelScope.launch {
+            val premium = isPremium.value || settingsDataStore.isPremium.first()
+            if (!premium && settingsDataStore.isPremiumChallenge(type)) {
+                return@launch
+            }
+            _draftChallengeType.value = type
+            if (type == "ADVANCED_MATH") {
+                val current = _draftAdvancedMathTopics.value ?: advancedMathTopics.value
+                if (current.isEmpty()) {
+                    _draftAdvancedMathTopics.value = setOf("RANDOM")
+                }
+            }
+        }
     }
 
     fun setStrictChallengeAmount(amount: Int) {
-        _draftChallengeAmount.value = amount
+        val type = strictChallengeType.value
+        _draftChallengeAmounts.value = _draftChallengeAmounts.value.toMutableMap().apply {
+            put(type, amount)
+        }
     }
 
     fun setBreakDurationMinutes(minutes: Int) {
@@ -101,28 +123,36 @@ class DisciplineModeSettingsViewModel @Inject constructor(
     }
 
     fun toggleAdvancedMathTopic(topic: String) {
-        val current = _draftAdvancedMathTopics.value ?: advancedMathTopics.value
-        val newTopics = current.toMutableSet()
-        if (newTopics.contains(topic)) {
-            if (newTopics.size > 1) { // ensure at least one topic remains
-                newTopics.remove(topic)
-            }
-        } else {
-            newTopics.add(topic)
-        }
-        _draftAdvancedMathTopics.value = newTopics
+        _draftAdvancedMathTopics.value = setOf(topic)
     }
 
     fun saveSettings(onSaved: () -> Unit = {}) {
         viewModelScope.launch {
             val typeToSave = _draftChallengeType.value ?: strictChallengeType.value
-            val amountToSave = _draftChallengeAmount.value ?: strictChallengeAmount.value
+            val amountToSave = _draftChallengeAmounts.value[typeToSave] ?: strictChallengeAmount.value
             val durationToSave = _draftBreakDuration.value ?: breakDurationMinutes.value
             val difficultyToSave = _draftChallengeDifficulty.value ?: strictChallengeDifficulty.value
             val topicsToSave = _draftAdvancedMathTopics.value ?: advancedMathTopics.value
 
-            settingsDataStore.setStrictChallengeType(typeToSave)
-            settingsDataStore.setStrictChallengeAmount(amountToSave)
+            val premium = isPremium.value || settingsDataStore.isPremium.first()
+            val finalType = if (!premium && settingsDataStore.isPremiumChallenge(typeToSave)) {
+                settingsDataStore.fallbackChallenge(typeToSave)
+            } else {
+                typeToSave
+            }
+
+            settingsDataStore.setStrictChallengeType(finalType)
+            
+            // Save drafted amounts for all types that were modified
+            _draftChallengeAmounts.value.forEach { (type, amount) ->
+                settingsDataStore.setChallengeAmountForType(type, amount)
+            }
+            
+            // If the current type wasn't drafted but the user clicked save, save its amount too
+            if (!_draftChallengeAmounts.value.containsKey(finalType)) {
+                 settingsDataStore.setChallengeAmountForType(finalType, amountToSave)
+            }
+            
             settingsDataStore.setBreakDurationMinutes(durationToSave)
             settingsDataStore.setChallengeDifficulty(difficultyToSave)
             settingsDataStore.setAdvancedMathTopics(topicsToSave)

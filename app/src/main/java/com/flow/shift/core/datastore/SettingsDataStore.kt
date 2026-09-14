@@ -2,6 +2,7 @@ package com.flow.shift.core.datastore
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -118,12 +119,37 @@ class SettingsDataStore @Inject constructor(
         preferences[LAST_MODE_DOWNGRADE_TIME] ?: 0L
     }
 
+    fun isPremiumChallenge(type: String): Boolean {
+        return type != "MATH"
+    }
+
+    fun fallbackChallenge(type: String): String {
+        return "MATH"
+    }
+
     val strictChallengeType: Flow<String> = dataStore.data.map { preferences ->
-        preferences[STRICT_CHALLENGE_TYPE] ?: "MATH"
+        val raw = preferences[STRICT_CHALLENGE_TYPE] ?: "MATH"
+        val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
+        if (!premium && isPremiumChallenge(raw)) {
+            fallbackChallenge(raw)
+        } else {
+            raw
+        }
     }
 
     val strictChallengeAmount: Flow<Int> = dataStore.data.map { preferences ->
-        preferences[STRICT_CHALLENGE_AMOUNT] ?: 15
+        val raw = preferences[STRICT_CHALLENGE_TYPE] ?: "MATH"
+        val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
+        val type = if (!premium && isPremiumChallenge(raw)) {
+            fallbackChallenge(raw)
+        } else {
+            raw
+        }
+        preferences[intPreferencesKey("challenge_amount_$type")] ?: preferences[STRICT_CHALLENGE_AMOUNT] ?: 15
+    }
+
+    fun getChallengeAmountForTypeFlow(type: String): Flow<Int> = dataStore.data.map { preferences ->
+        preferences[intPreferencesKey("challenge_amount_$type")] ?: preferences[STRICT_CHALLENGE_AMOUNT] ?: 15
     }
 
     val breakDurationMinutes: Flow<Int> = dataStore.data.map { preferences ->
@@ -202,12 +228,22 @@ class SettingsDataStore @Inject constructor(
     // ── Appearance Flows ──
     val theme: Flow<String> = dataStore.data.map { it[THEME] ?: "Dark" }
     val animationsEnabled: Flow<Boolean> = dataStore.data.map { it[ANIMATIONS_ENABLED] ?: true }
-    val showReelCount: Flow<Boolean> = dataStore.data.map { it[SHOW_REEL_COUNT] ?: false }
+    val showReelCount: Flow<Boolean> = dataStore.data.map { preferences ->
+        val enabled = preferences[SHOW_REEL_COUNT] ?: false
+        val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
+        premium && enabled
+    }
+
+    val reelCountToday: Flow<Int> = dataStore.data.map { it[REEL_COUNT_TODAY] ?: 0 }
+    val reelCountDateMillis: Flow<Long> = dataStore.data.map { it[REEL_COUNT_DATE_MILLIS] ?: 0L }
 
     // ── Challenge Flows ──
     val challengeDifficulty: Flow<String> = dataStore.data.map { it[CHALLENGE_DIFFICULTY] ?: "Medium" }
     val randomizeChallenges: Flow<Boolean> = dataStore.data.map { it[RANDOMIZE_CHALLENGES] ?: true }
-    val advancedMathTopics: Flow<Set<String>> = dataStore.data.map { it[ADVANCED_MATH_TOPICS] ?: setOf("POLYNOMIAL") }
+    val advancedMathTopics: Flow<Set<String>> = dataStore.data.map { preferences ->
+        val topics = preferences[ADVANCED_MATH_TOPICS]
+        if (topics.isNullOrEmpty()) setOf("RANDOM") else topics
+    }
 
     // ── Existing Setters ──
     suspend fun setOnboardingCompleted(completed: Boolean) {
@@ -230,7 +266,8 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setBlockType(type: String) {
         dataStore.edit { preferences ->
-            preferences[BLOCK_TYPE] = type
+            val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
+            preferences[BLOCK_TYPE] = if (type == "REELS" && !premium) "WHOLE_APP" else type
         }
     }
 
@@ -242,13 +279,30 @@ class SettingsDataStore @Inject constructor(
 
     suspend fun setStrictChallengeType(type: String) {
         dataStore.edit { preferences ->
-            preferences[STRICT_CHALLENGE_TYPE] = type
+            val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
+            preferences[STRICT_CHALLENGE_TYPE] = if (!premium && isPremiumChallenge(type)) {
+                fallbackChallenge(type)
+            } else {
+                type
+            }
         }
     }
 
     suspend fun setStrictChallengeAmount(amount: Int) {
         dataStore.edit { preferences ->
             preferences[STRICT_CHALLENGE_AMOUNT] = amount
+            val type = preferences[STRICT_CHALLENGE_TYPE] ?: "MATH"
+            preferences[intPreferencesKey("challenge_amount_$type")] = amount
+        }
+    }
+
+    suspend fun setChallengeAmountForType(type: String, amount: Int) {
+        dataStore.edit { preferences ->
+            preferences[intPreferencesKey("challenge_amount_$type")] = amount
+            // Optional: update legacy fallback if it matches current type
+            if ((preferences[STRICT_CHALLENGE_TYPE] ?: "MATH") == type) {
+                preferences[STRICT_CHALLENGE_AMOUNT] = amount
+            }
         }
     }
 
@@ -301,9 +355,24 @@ class SettingsDataStore @Inject constructor(
         }
     }
 
+    private fun sanitizePremiumPreferences(preferences: MutablePreferences) {
+        if (preferences[BLOCK_TYPE] == "REELS") {
+            preferences[BLOCK_TYPE] = "WHOLE_APP"
+        }
+        preferences[SHOW_REEL_COUNT] = false
+        val challenge = preferences[STRICT_CHALLENGE_TYPE]
+        if (challenge != null && isPremiumChallenge(challenge)) {
+            preferences[STRICT_CHALLENGE_TYPE] = fallbackChallenge(challenge)
+        }
+    }
+
     suspend fun setPretendSubscribed(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PRETEND_SUBSCRIBED] = enabled
+            val actual = preferences[IS_PREMIUM] ?: false
+            if (!enabled && !actual) {
+                sanitizePremiumPreferences(preferences)
+            }
         }
     }
 
@@ -323,6 +392,10 @@ class SettingsDataStore @Inject constructor(
     suspend fun setIsPremium(isPremium: Boolean) {
         dataStore.edit { preferences ->
             preferences[IS_PREMIUM] = isPremium
+            val pretend = preferences[PRETEND_SUBSCRIBED] ?: false
+            if (!isPremium && !pretend) {
+                sanitizePremiumPreferences(preferences)
+            }
         }
     }
 
@@ -362,7 +435,12 @@ class SettingsDataStore @Inject constructor(
     // ── Appearance Setters ──
     suspend fun setTheme(theme: String) { dataStore.edit { it[THEME] = theme } }
     suspend fun setAnimationsEnabled(enabled: Boolean) { dataStore.edit { it[ANIMATIONS_ENABLED] = enabled } }
-    suspend fun setShowReelCount(enabled: Boolean) { dataStore.edit { it[SHOW_REEL_COUNT] = enabled } }
+    suspend fun setShowReelCount(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
+            preferences[SHOW_REEL_COUNT] = if (enabled && !premium) false else enabled
+        }
+    }
 
     // ── Challenge Setters ──
     suspend fun setChallengeDifficulty(difficulty: String) { dataStore.edit { it[CHALLENGE_DIFFICULTY] = difficulty } }

@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.flow.shift.core.database.BlockedAppDao
 import com.flow.shift.core.database.FlowShiftDatabase
 import com.flow.shift.core.database.InterventionDao
+import com.flow.shift.core.database.ReelEventDao
 import com.flow.shift.core.database.UserGamificationDao
 import com.flow.shift.core.database.WorkoutSessionDao
 import dagger.Module
@@ -39,6 +40,22 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS reel_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    packageName TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL("DROP INDEX IF EXISTS index_reel_events_timestamp")
+            db.execSQL("DROP INDEX IF EXISTS index_reel_events_package")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): FlowShiftDatabase {
@@ -47,7 +64,7 @@ object DatabaseModule {
             FlowShiftDatabase::class.java,
             "flowshift_db"
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 
@@ -69,6 +86,11 @@ object DatabaseModule {
     @Provides
     fun provideInterventionDao(database: FlowShiftDatabase): InterventionDao {
         return database.interventionDao()
+    }
+
+    @Provides
+    fun provideReelEventDao(database: FlowShiftDatabase): ReelEventDao {
+        return database.reelEventDao()
     }
 }
 

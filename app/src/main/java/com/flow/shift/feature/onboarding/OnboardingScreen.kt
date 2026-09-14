@@ -125,12 +125,16 @@ fun OnboardingScreen(
     // OEM specific permissions
     val manufacturer = Build.MANUFACTURER.lowercase()
     val isChineseOEM = manufacturer in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+    // Only these OEMs still expose Auto-start as a useful reliability setting.
+    // Other manufacturers either do not provide it or do not need it for FlowShift.
+    val needsAutostartGuidance = manufacturer in listOf("xiaomi", "redmi", "poco", "vivo", "iqoo")
+    val showBatteryOptimization = manufacturer != "realme"
     val isSamsung = manufacturer == "samsung"
     val autostartCheckSupported = remember { canCheckAutostart(context) }
     var userInteractedAutostart by remember { mutableStateOf(false) }
     var hasAutostartPermission by remember {
         mutableStateOf(
-            if (!isChineseOEM) true
+            if (!needsAutostartGuidance) true
             else if (autostartCheckSupported) hasAutostartPermission(context)
             else false
         )
@@ -149,7 +153,7 @@ fun OnboardingScreen(
             hasCameraPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
             hasBackgroundWindowsPermission = hasBackgroundWindowPermission(context)
             hasBatteryOptimizationExemption = isBatteryOptimizationExempt(context)
-            if (isChineseOEM) {
+            if (needsAutostartGuidance) {
                 if (autostartCheckSupported) {
                     hasAutostartPermission = hasAutostartPermission(context)
                 } else if (userInteractedAutostart) {
@@ -189,7 +193,7 @@ fun OnboardingScreen(
         2 -> true // Target screen time — slider always valid
         3 -> true // Mode — always has a default (EASY)
         4 -> true // Apps — optional, can skip
-        5 -> hasUsagePermission && hasOverlayPermission && hasAccessibilityPermission && hasAutostartPermission && hasBackgroundWindowsPermission && hasBatteryOptimizationExemption && hasSamsungBatteryPermission
+        5 -> hasUsagePermission && hasOverlayPermission && hasAccessibilityPermission && hasAutostartPermission && hasBackgroundWindowsPermission && (!showBatteryOptimization || hasBatteryOptimizationExemption) && hasSamsungBatteryPermission
         6 -> true // All set — always
         else -> false
     }
@@ -200,6 +204,7 @@ fun OnboardingScreen(
 
         Scaffold(
             containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
                 AnimatedVisibility(
                     visible = currentStep > 0 && currentStep < 6,
@@ -264,8 +269,10 @@ fun OnboardingScreen(
                         hasOverlayPermission = hasOverlayPermission,
                         hasAccessibilityPermission = hasAccessibilityPermission,
                         hasAutostartPermission = hasAutostartPermission,
+                        showAutostartGuidance = needsAutostartGuidance,
                         hasBackgroundWindowsPermission = hasBackgroundWindowsPermission,
                         hasBatteryOptimizationExemption = hasBatteryOptimizationExemption,
+                        showBatteryOptimization = showBatteryOptimization,
                         hasSamsungBatteryPermission = hasSamsungBatteryPermission,
                         onAutostartClick = {
                             if (autostartCheckSupported && hasAutostartPermission(context)) {
@@ -697,14 +704,14 @@ private fun ScreenTimeSliderStep(
             lineHeight = 22.sp
         )
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // Large hour display — dynamic sizing and color
         val currentTextSize = (32f + (fraction * 32f)).sp
 
         Box(
             modifier = Modifier
-                .padding(vertical = 24.dp)
+                .padding(vertical = 12.dp)
                 .height(80.dp) // Fixed height prevents shifting layout
                 .graphicsLayer {
                     scaleX = scale.value
@@ -722,7 +729,7 @@ private fun ScreenTimeSliderStep(
         }
 
 
-        Spacer(modifier = Modifier.height(56.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // Hour markers
         androidx.compose.ui.layout.Layout(
@@ -892,14 +899,14 @@ private fun TargetScreenTimeSliderStep(
             lineHeight = 22.sp
         )
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // Large hour display — dynamic sizing and color
         val currentTextSize = (32f + (fraction * 16f)).sp
 
         Box(
             modifier = Modifier
-                .padding(vertical = 24.dp)
+                .padding(vertical = 12.dp)
                 .height(80.dp) // Fixed height prevents shifting layout
                 .graphicsLayer {
                     scaleX = scale.value
@@ -917,7 +924,7 @@ private fun TargetScreenTimeSliderStep(
         }
 
 
-        Spacer(modifier = Modifier.height(56.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // Hour markers
         androidx.compose.ui.layout.Layout(
@@ -1440,8 +1447,10 @@ private fun PermissionsStep(
     hasOverlayPermission: Boolean,
     hasAccessibilityPermission: Boolean,
     hasAutostartPermission: Boolean,
+    showAutostartGuidance: Boolean,
     hasBackgroundWindowsPermission: Boolean,
     hasBatteryOptimizationExemption: Boolean,
+    showBatteryOptimization: Boolean,
     hasSamsungBatteryPermission: Boolean,
     onAutostartClick: () -> Unit,
     onBackgroundWindowsClick: () -> Unit,
@@ -1602,23 +1611,25 @@ private fun PermissionsStep(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Battery Optimization — shown for ALL devices
-        PermissionCard(
-            icon = Icons.Default.BatteryAlert,
-            title = "Battery Optimization",
-            description = "Prevents your phone from killing FlowShift in the background. Critical for reliable blocking.",
-            isGranted = hasBatteryOptimizationExemption,
-            onClick = onBatteryOptimizationClick
-        )
+        if (showBatteryOptimization) {
+            PermissionCard(
+                icon = Icons.Default.BatteryAlert,
+                title = "Battery Optimization",
+                description = "Prevents your phone from killing FlowShift in the background. Critical for reliable blocking.",
+                isGranted = hasBatteryOptimizationExemption,
+                onClick = onBatteryOptimizationClick
+            )
 
-        Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+        }
 
         // OEM-specific permissions
         val manufacturer = Build.MANUFACTURER.lowercase()
         val isChineseOEM = manufacturer in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+        val isRealme = manufacturer == "realme"
         val isSamsung = manufacturer == "samsung"
 
-        if (isChineseOEM) {
+        if (showAutostartGuidance) {
             // Background Autostart
             PermissionCard(
                 icon = Icons.Default.Settings,
@@ -1629,12 +1640,18 @@ private fun PermissionsStep(
             )
 
             Spacer(modifier = Modifier.height(14.dp))
+        }
 
+        if (isChineseOEM) {
             // Background Windows
             PermissionCard(
                 icon = Icons.Default.OpenInNew,
-                title = "Background Windows",
-                description = "Allows the blocker screen to open from the background.",
+                title = if (isRealme) "Allow Background Activity" else "Background Windows",
+                description = if (isRealme) {
+                    "Lets FlowShift keep working after you leave the app."
+                } else {
+                    "Allows the blocker screen to open from the background."
+                },
                 isGranted = hasBackgroundWindowsPermission,
                 onClick = { showBackgroundWindowsGuide = true }
             )
@@ -1995,6 +2012,13 @@ private fun openAutostartSettings(context: Context) {
 }
 
 private fun openBackgroundWindowsSettings(context: Context) {
+    if (Build.MANUFACTURER.equals("realme", ignoreCase = true)) {
+        // Realme does not provide a stable public intent for App battery management.
+        // Its App info screen contains Battery usage, where users can allow background activity.
+        openAppSettings(context)
+        return
+    }
+
     try {
         val intent = Intent("miui.intent.action.APP_PERM_EDITOR").apply {
             setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
@@ -2067,7 +2091,9 @@ private fun BackgroundWindowsGuideDialog(
     val guideText = when {
         manufacturer in listOf("xiaomi", "redmi", "poco") -> 
             "1. You will be taken to App Info.\n2. Tap on 'Other permissions'.\n3. Find 'Display pop-up windows while running in the background' and set it to 'Always allow'."
-        manufacturer in listOf("oppo", "oneplus", "realme") -> 
+        manufacturer == "realme" ->
+            "1. You will be taken to FlowShift's App info.\n2. Tap 'Battery usage'.\n3. Turn on 'Allow background activity' (or select 'Unrestricted')."
+        manufacturer in listOf("oppo", "oneplus") ->
             "1. You will be taken to App Info.\n2. Tap on 'Permissions'.\n3. Find 'Display over other apps' or similar and allow it."
         manufacturer in listOf("vivo", "iqoo") -> 
             "1. You will be taken to App Info.\n2. Tap on 'Permissions' or 'Single permission settings'.\n3. Enable 'Background pop-ups'."

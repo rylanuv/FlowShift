@@ -2,8 +2,11 @@ package com.flow.shift
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Shield
@@ -31,6 +34,7 @@ import com.flow.shift.feature.modes.ModesScreen
 import com.flow.shift.feature.onboarding.OnboardingScreen
 import com.flow.shift.feature.settings.SettingsScreen
 import com.flow.shift.feature.subscription.SubscriptionScreen
+import com.flow.shift.feature.statistics.StatisticsScreen
 import com.flow.shift.feature.settings.TroubleshootScreen
 import com.flow.shift.theme.FlowShiftTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -62,6 +66,7 @@ class MainActivity : ComponentActivity() {
     lateinit var billingRepository: BillingRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         
         setContent {
@@ -231,7 +236,9 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
         NavHost(
             navController = navController,
             startDestination = startDestination,
-            modifier = Modifier.padding(paddingValues)
+            modifier = Modifier.padding(
+                if (currentRoute == "onboarding") PaddingValues(0.dp) else paddingValues
+            )
         ) {
             composable("main") {
                 Box(
@@ -240,7 +247,7 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                         .paint(
                             painter = painterResource(id = currentMode.backgroundImageRes),
                             contentScale = ContentScale.Crop,
-                            alpha = 0.9f
+                            alpha = currentMode.backgroundAlpha
                         )
                         .background(SurfaceBlack.copy(alpha = 0.25f))
                 ) {
@@ -259,7 +266,9 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                                 },
                                 onNavigateToEasyModeSettings = { navController.navigate("easyModeSettings") },
                                 onNavigateToDisciplineModeSettings = { navController.navigate("disciplineModeSettings") },
-                                onNavigateToHardcoreModeSettings = { navController.navigate("hardcoreModeSettings") }
+                                onNavigateToHardcoreModeSettings = { navController.navigate("hardcoreModeSettings") },
+                                onNavigateToStats = { navController.navigate("stats") },
+                                onNavigateToSubscription = { navController.navigate("subscription") }
                             )
                             1 -> ModesScreen(
                                 showBackground = false,
@@ -282,7 +291,9 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                     onNavigateToModes = { navController.navigate("modes") },
                     onNavigateToEasyModeSettings = { navController.navigate("easyModeSettings") },
                     onNavigateToDisciplineModeSettings = { navController.navigate("disciplineModeSettings") },
-                    onNavigateToHardcoreModeSettings = { navController.navigate("hardcoreModeSettings") }
+                    onNavigateToHardcoreModeSettings = { navController.navigate("hardcoreModeSettings") },
+                    onNavigateToStats = { navController.navigate("stats") },
+                    onNavigateToSubscription = { navController.navigate("subscription") }
                 )
             }
             composable("modes") {
@@ -317,6 +328,11 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
             }
             composable("troubleshoot") {
                 TroubleshootScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable("stats") {
+                StatisticsScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

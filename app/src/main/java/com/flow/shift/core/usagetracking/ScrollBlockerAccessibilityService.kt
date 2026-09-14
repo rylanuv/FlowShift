@@ -7,6 +7,8 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.flow.shift.core.database.BlockedAppDao
 import com.flow.shift.core.database.InterventionDao
 import com.flow.shift.core.database.InterventionEntity
+import com.flow.shift.core.database.ReelEventDao
+import com.flow.shift.core.database.ReelEventEntity
 import com.flow.shift.core.database.WorkoutSessionDao
 import com.flow.shift.core.datastore.SettingsDataStore
 import com.flow.shift.feature.dashboard.parseTargetScreenTimeMillis
@@ -32,6 +34,9 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
 
     @Inject
     lateinit var interventionDao: InterventionDao
+
+    @Inject
+    lateinit var reelEventDao: ReelEventDao
 
     @Inject
     lateinit var settingsDataStore: SettingsDataStore
@@ -63,6 +68,17 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
     private var lastShortsDetectionAtMillis = 0L
 
     private var overlayFadeJob: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        serviceScope.launch {
+            settingsDataStore.showReelCount.collect { enabled ->
+                if (!enabled) {
+                    updateOverlayOnMainThread(false)
+                }
+            }
+        }
+    }
 
     private fun showOverlayTemporarily() {
         overlayFadeJob?.cancel()
@@ -98,7 +114,9 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         const val MIN_EVENT_INTERVAL_MS = 180L
         const val CONTENT_EVENT_INTERVAL_MS = 700L
         const val TARGET_RECHECK_INTERVAL_MS = 15_000L
-        const val NODE_SCAN_LIMIT = 600
+        // Older app builds expose deeper, less-pruned accessibility trees.
+        // Keep the scan bounded, but allow enough nodes to reach their Reels container.
+        const val NODE_SCAN_LIMIT = 1_400
     }
 
     /**
@@ -158,6 +176,11 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             currentPackage = packageName
             lastScrollFromIndex = -1
             lastReelScrollTime = 0L
+            // A Reels state belongs to one app window only. Retaining it while
+            // switching apps can prevent fresh detection and corrupt the count.
+            isCurrentlyInShorts = false
+            lastShortsDetectionAtMillis = 0L
+            serviceScope.launch { updateOverlayOnMainThread(false) }
         }
 
         val now = System.currentTimeMillis()
@@ -278,6 +301,12 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                         if (now - lastReelScrollTime > 800L) { // Debounce for reel swipes
                             lastReelScrollTime = now
                             serviceScope.launch {
+                                // Enable reels counter only when there is time (not blocked)
+                                if (shouldBlockApp(packageName)) {
+                                    updateOverlayOnMainThread(false)
+                                    return@launch
+                                }
+
                                 val startOfDay = java.util.Calendar.getInstance().apply {
                                     timeInMillis = now
                                     set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -286,6 +315,16 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                                     set(java.util.Calendar.MILLISECOND, 0)
                                 }.timeInMillis
                                 reelCount = settingsDataStore.incrementReelCount(startOfDay)
+                                try {
+                                    reelEventDao.insertReelEvent(
+                                        ReelEventEntity(
+                                            timestamp = now,
+                                            packageName = packageName
+                                        )
+                                    )
+                                } catch (e: Exception) {
+                                    android.util.Log.e("AppTracking", "Failed to insert reel event", e)
+                                }
                                 
                                 if (settingsDataStore.showReelCount.first()) {
                                     showOverlayTemporarily()
@@ -350,6 +389,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
 
                 if (shouldEagerBlock && shouldBlockApp(packageName)) {
                     android.util.Log.d("AppTracking", "Accessibility blocking app: $packageName")
+                    updateOverlayOnMainThread(false)
                     lastBlockerLaunchAtMillis = System.currentTimeMillis()
                     performGlobalAction(GLOBAL_ACTION_HOME)
                     triggerBlocker(packageName)
@@ -379,9 +419,11 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                 isCurrentlyInShorts = shortsResult.isPresent || recentlyInShorts
 
                 // Ensure we update overlay visibility if shorts state changes
+                // The reels counter is enabled only when there is time (not blocked)
                 if (isShortFormSupportedApp(packageName)) {
                     val showReelCount = settingsDataStore.showReelCount.first()
-                    if (isCurrentlyInShorts && showReelCount) {
+                    val willBeBlocked = shouldBlockApp(packageName)
+                    if (isCurrentlyInShorts && showReelCount && !willBeBlocked) {
                         val startOfDay = java.util.Calendar.getInstance().apply {
                             timeInMillis = System.currentTimeMillis()
                             set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -390,7 +432,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                             set(java.util.Calendar.MILLISECOND, 0)
                         }.timeInMillis
                         reelCount = settingsDataStore.getReelCountToday(startOfDay)
-                    } else if (!isCurrentlyInShorts) {
+                    } else if (!isCurrentlyInShorts || willBeBlocked || !showReelCount) {
                         updateOverlayOnMainThread(false)
                     }
                 }
@@ -398,8 +440,18 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                 // STRICT BLOCKING LOGIC: Only block if we actively see the reel right now.
                 // Do NOT use the grace period for blocking, otherwise leaving a reel 
                 // will falsely trigger a block on the new tab.
-                if (shortsResult.isPresent && !shortsResult.isInSafeContext) {
+                // A Reel card in Facebook's Home feed may autoplay, but it is not
+                // the infinite-scroll viewer. Only enforce Facebook's Reels-only
+                // block after the user opens the fullscreen Reel experience.
+                val isBlockableShortForm = shortsResult.isPresent &&
+                    !shortsResult.isInSafeContext &&
+                    (packageName != "com.facebook.katana" || shortsResult.isFullScreen)
+
+                if (isBlockableShortForm) {
                     if (shouldBlockApp(packageName)) {
+                        updateOverlayOnMainThread(false)
+                        isCurrentlyInShorts = false
+                        lastShortsDetectionAtMillis = 0L
 
                         // TikTok is entirely short-form — there is no "safe" tab.
                         // Send the user to the home screen and launch the blocker.
@@ -419,8 +471,10 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                             homeAction = clickSafeTab(newRoot, packageName)
                         }
 
-                        if (homeAction == HomeTabAction.ALREADY_ON_HOME) {
-                            // Already on the safe Home tab / feed, don't block here
+                        if (homeAction == HomeTabAction.ALREADY_ON_HOME && !shortsResult.isFullScreen) {
+                            // A selected Home tab is safe only when the detection is
+                            // not fullscreen. YouTube keeps Home selected behind a
+                            // Short opened from the Home feed.
                             return@launch
                         }
 
@@ -504,6 +558,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                     lastDisplayedReelCount = reelCount
                 }
             } else {
+                overlayFadeJob?.cancel()
                 if (overlayView != null) {
                     try {
                         windowManager?.removeView(overlayView)
@@ -566,7 +621,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             // Only consider nodes that are currently visible on the screen.
             // This is the critical fix for "background" Reels continuing to block 
             // when DMs or Profile fragments open on top.
-            if (node.isVisibleToUser) {
+            if (isVisibleInActiveWindow(node, rootNode)) {
                 val desc = node.contentDescription?.toString()?.lowercase() ?: ""
                 val id = node.viewIdResourceName?.toString()?.lowercase() ?: ""
                 val text = node.text?.toString()?.lowercase() ?: ""
@@ -726,11 +781,37 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         return ShortsDetectionResult(found, isFullScreen, false)
     }
 
+    /**
+     * Some Android 7-8 OEM accessibility implementations report false from
+     * isVisibleToUser for every child in a hardware-accelerated app window.
+     * For those versions, bounds intersection is the reliable visibility signal.
+     */
+    private fun isVisibleInActiveWindow(
+        node: AccessibilityNodeInfo,
+        rootNode: AccessibilityNodeInfo
+    ): Boolean {
+        if (node.isVisibleToUser) return true
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) return false
+
+        val rootBounds = android.graphics.Rect()
+        rootNode.getBoundsInScreen(rootBounds)
+        val nodeBounds = android.graphics.Rect()
+        node.getBoundsInScreen(nodeBounds)
+        return !rootBounds.isEmpty && !nodeBounds.isEmpty &&
+            android.graphics.Rect.intersects(rootBounds, nodeBounds)
+    }
+
     private fun isShortsContainerId(packageName: String, id: String): Boolean {
         if (packageName == "com.instagram.android") {
             return id.contains("clips_video_container") || 
                    id.contains("clips_viewer") ||
                    id.contains("reels_viewer") ||
+                   // Older Instagram releases use singular `reel_*` IDs.
+                   id.contains("reel_viewer") ||
+                   id.contains("reel_item") ||
+                   id.contains("reel_video_container") ||
+                   id.contains("reel_view_pager") ||
+                   id.contains("reel_swipe") ||
                    id.contains("clips_item") ||
                    id.contains("clips_swipe") ||
                    id.contains("clips_view_pager")
@@ -837,7 +918,11 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             if (text == "search youtube" || desc == "search youtube") return true
             if (text == "history" && id.contains("title")) return true
             if (id.contains("bottom_bar") && desc.contains("you, selected")) return true // "You" tab
-            if (desc.contains("home, selected") || desc.contains("subscriptions, selected")) return true
+            // YouTube retains the source tab as selected while a Short opened from
+            // that tab is playing. In particular, a Short opened from Home still
+            // exposes "Home, selected", so that is not enough to prove that the
+            // current screen is safe. Let the Shorts-player markers decide instead.
+            if (desc.contains("subscriptions, selected")) return true
         }
 
         if (packageName == "com.zhiliaoapp.musically") {
@@ -853,8 +938,10 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         }
 
         if (packageName == "com.facebook.katana") {
-            // Facebook: Home feed, Marketplace, Menu, Notifications, Gaming are safe
-            if (desc.contains("home, selected") || desc.contains("home tab, selected") || desc.contains("news feed, selected")) return true
+            // Facebook's Home tab remains selected after opening a Reel from the
+            // feed. Do not use it as a safe-context marker: the fullscreen-player
+            // check above distinguishes an opened Reel from an inline feed card.
+            // Marketplace, Menu, Notifications, and Gaming remain safe.
             if (desc.contains("menu, selected") || desc.contains("menu tab, selected")) return true
             if (desc.contains("marketplace, selected") || desc.contains("marketplace tab, selected")) return true
             if (desc.contains("notifications, selected") || desc.contains("notifications tab, selected")) return true

@@ -161,7 +161,7 @@ fun SubscriptionScreen(
                 .padding(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            FeatureRow("AI Squats & Pose Tracking Challenges")
+            FeatureRow("AI Push-ups, Squats & Pose Tracking Challenges")
             FeatureRow("Advanced Math Challenges")
             FeatureRow("Charge Phone Challenge")
             FeatureRow("Reels Block Only")
@@ -365,7 +365,9 @@ private fun PlanCard(
                                 color = PremiumGold,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }

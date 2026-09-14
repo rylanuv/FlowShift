@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Block
@@ -34,8 +35,11 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
+import com.flow.shift.core.designsystem.ReelCountExplainerDialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,7 +88,9 @@ fun DashboardScreen(
     onNavigateToModes: () -> Unit = {},
     onNavigateToEasyModeSettings: () -> Unit = {},
     onNavigateToDisciplineModeSettings: () -> Unit = {},
-    onNavigateToHardcoreModeSettings: () -> Unit = {}
+    onNavigateToHardcoreModeSettings: () -> Unit = {},
+    onNavigateToStats: () -> Unit = {},
+    onNavigateToSubscription: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -93,8 +99,9 @@ fun DashboardScreen(
             .fillMaxSize()
             .then(
                 if (showBackground) {
-                    val bgRes = (uiState as? DashboardUiState.Success)?.settings?.blockingMode?.backgroundImageRes ?: R.drawable.main_screen
-                    val bgAlpha = if (bgRes == R.drawable.strict_home) 0.8f else 0.9f
+                    val currentMode = (uiState as? DashboardUiState.Success)?.settings?.blockingMode ?: BlockingMode.EASY
+                    val bgRes = currentMode.backgroundImageRes
+                    val bgAlpha = currentMode.backgroundAlpha
                     Modifier
                         .paint(
                             painter = painterResource(id = bgRes),
@@ -124,6 +131,9 @@ fun DashboardScreen(
                     onNavigateToEasyModeSettings = onNavigateToEasyModeSettings,
                     onNavigateToDisciplineModeSettings = onNavigateToDisciplineModeSettings,
                     onNavigateToHardcoreModeSettings = onNavigateToHardcoreModeSettings,
+                    onNavigateToStats = onNavigateToStats,
+                    onNavigateToSubscription = onNavigateToSubscription,
+                    onEnableReelCount = { viewModel.setShowReelCount(true) },
                     onStartFocusMode = { viewModel.startFocusMode(it) },
                     onStopFocusMode = { viewModel.stopFocusMode() }
                 )
@@ -142,9 +152,14 @@ private fun DashboardContent(
     onNavigateToEasyModeSettings: () -> Unit,
     onNavigateToDisciplineModeSettings: () -> Unit,
     onNavigateToHardcoreModeSettings: () -> Unit,
+    onNavigateToStats: () -> Unit,
+    onNavigateToSubscription: () -> Unit = {},
+    onEnableReelCount: () -> Unit = {},
     onStartFocusMode: (Int) -> Unit,
     onStopFocusMode: () -> Unit
 ) {
+    val context = LocalContext.current
+    var showReelCountExplainerDialog by remember { mutableStateOf(false) }
     val blockingMode = settings.blockingMode
     val challengeType = settings.challengeType
     val challengeAmount = settings.challengeAmount
@@ -237,6 +252,22 @@ private fun DashboardContent(
                     fontWeight = FontWeight.Normal
                 )
             }
+
+            IconButton(
+                onClick = onNavigateToStats,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(SurfaceCard.copy(alpha = 0.65f))
+                    .border(1.dp, GlassBorderBrush, RoundedCornerShape(14.dp))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.BarChart,
+                    contentDescription = "Statistics",
+                    tint = modeAccent,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -254,113 +285,193 @@ private fun DashboardContent(
                 .clip(RoundedCornerShape(28.dp))
                 .background(SurfaceCard.copy(alpha = 0.55f))
                 .border(1.dp, if (isFocusModeActive) androidx.compose.ui.graphics.SolidColor(activeColor.copy(alpha = glowAlpha)) else GlassBorderBrush, RoundedCornerShape(28.dp))
-                .padding(vertical = 32.dp),
+                .padding(top = 28.dp, bottom = 20.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Progress Ring
-            Box(
-                modifier = Modifier
-                    .size(240.dp)
-                    .drawBehind {
-                        val strokeWidth = 14.dp.toPx()
-                        // Background track
-                        drawArc(
-                            color = Color.White.copy(alpha = 0.12f),
-                            startAngle = 140f,
-                            sweepAngle = 260f,
-                            useCenter = false,
-                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                        )
-                        // Animated foreground — tinted per mode
-                        val sweepAngle = animatedProgress * 260f
-                        drawArc(
-                            color = activeColor,
-                            startAngle = 140f,
-                            sweepAngle = sweepAngle,
-                            useCenter = false,
-                            style = Stroke(
-                                width = strokeWidth,
-                                cap = StrokeCap.Round
-                            )
-                        )
-                    },
-                contentAlignment = Alignment.Center
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = topLabel,
-                        color = activeColor,
-                        fontFamily = AppFontFamily,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = remainingLabel,
-                        color = TextPrimary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 48.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-1).sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = nextLabel,
-                        color = TextSecondary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    // Mode Badge Pill
-                    val (pillBgColor, pillBorderColor, pillText) = when (blockingMode) {
-                        BlockingMode.EASY -> Triple(
-                            Color(0xFF064E3B),
-                            StatusGreen.copy(alpha = 0.3f),
-                            "Easy Mode"
+                // Progress Ring
+                Box(
+                    modifier = Modifier
+                        .size(240.dp)
+                        .drawBehind {
+                            val strokeWidth = 14.dp.toPx()
+                            // Background track
+                            drawArc(
+                                color = Color.White.copy(alpha = 0.12f),
+                                startAngle = 140f,
+                                sweepAngle = 260f,
+                                useCenter = false,
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                            )
+                            // Animated foreground — tinted per mode
+                            val sweepAngle = animatedProgress * 260f
+                            drawArc(
+                                color = activeColor,
+                                startAngle = 140f,
+                                sweepAngle = sweepAngle,
+                                useCenter = false,
+                                style = Stroke(
+                                    width = strokeWidth,
+                                    cap = StrokeCap.Round
+                                )
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = topLabel,
+                            color = activeColor,
+                            fontFamily = AppFontFamily,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
                         )
-                        BlockingMode.STRICT -> Triple(
-                            ModeStrictAccent.copy(alpha = 0.12f),
-                            ModeStrictAccent.copy(alpha = 0.3f),
-                            "Discipline Mode"
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = remainingLabel,
+                            color = TextPrimary,
+                            fontFamily = AppFontFamily,
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-1).sp
                         )
-                        BlockingMode.HARDCORE -> Triple(
-                            ModeHardcoreAccent.copy(alpha = 0.12f),
-                            ModeHardcoreAccent.copy(alpha = 0.3f),
-                            "Hardcore Mode"
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = nextLabel,
+                            color = TextSecondary,
+                            fontFamily = AppFontFamily,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
                         )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        // Mode Badge Pill
+                        val (pillBgColor, pillBorderColor, pillText) = when (blockingMode) {
+                            BlockingMode.EASY -> Triple(
+                                Color(0xFF064E3B),
+                                StatusGreen.copy(alpha = 0.3f),
+                                "Easy Mode"
+                            )
+                            BlockingMode.STRICT -> Triple(
+                                ModeStrictAccent.copy(alpha = 0.12f),
+                                ModeStrictAccent.copy(alpha = 0.3f),
+                                "Discipline Mode"
+                            )
+                            BlockingMode.HARDCORE -> Triple(
+                                ModeHardcoreAccent.copy(alpha = 0.12f),
+                                ModeHardcoreAccent.copy(alpha = 0.3f),
+                                "Hardcore Mode"
+                            )
+                        }
+                        val pillIconTint = when (blockingMode) {
+                            BlockingMode.EASY -> StatusGreen
+                            BlockingMode.STRICT -> ModeStrictAccent
+                            BlockingMode.HARDCORE -> ModeHardcoreAccent
+                        }
+                        val pillIcon = when (blockingMode) {
+                            BlockingMode.EASY -> Icons.Default.Timer
+                            BlockingMode.STRICT -> Icons.Default.Shield
+                            BlockingMode.HARDCORE -> Icons.Default.Lock
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(pillBgColor)
+                                .border(1.dp, pillBorderColor, RoundedCornerShape(20.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = pillIcon,
+                                    contentDescription = null,
+                                    tint = pillIconTint,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = pillText,
+                                    color = pillIconTint,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
                     }
-                    val pillIconTint = when (blockingMode) {
-                        BlockingMode.EASY -> StatusGreen
-                        BlockingMode.STRICT -> ModeStrictAccent
-                        BlockingMode.HARDCORE -> ModeHardcoreAccent
-                    }
-                    val pillIcon = when (blockingMode) {
-                        BlockingMode.EASY -> Icons.Default.Timer
-                        BlockingMode.STRICT -> Icons.Default.Shield
-                        BlockingMode.HARDCORE -> Icons.Default.Lock
-                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // ── Reels Scrolled / Prompt Section ──
+                if (settings.showReelCount) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(pillBgColor)
-                            .border(1.dp, pillBorderColor, RoundedCornerShape(20.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+                            .clickable { onNavigateToStats() }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
                             Icon(
-                                imageVector = pillIcon,
+                                imageVector = Icons.Default.SmartDisplay,
                                 contentDescription = null,
-                                tint = pillIconTint,
+                                tint = if (metrics.totalReelsToday > 0) Amber500 else TextSecondary,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = pillText,
-                                color = pillIconTint,
+                                text = "Reels Scrolled: ",
+                                color = TextSecondary,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.Normal
+                            )
+                            Text(
+                                text = metrics.totalReelsToday.toString(),
+                                color = if (metrics.totalReelsToday > 0) Amber500 else TextPrimary,
+                                fontSize = 12.sp,
+                                fontFamily = AppFontFamily,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Amber500.copy(alpha = 0.10f))
+                            .border(1.dp, Amber500.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                            .clickable { showReelCountExplainerDialog = true }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = Amber500,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Reel count is off",
+                                color = TextSecondary,
+                                fontSize = 11.5.sp,
+                                fontFamily = AppFontFamily
+                            )
+                            Text(
+                                text = " • Turn on",
+                                color = Amber500,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = AppFontFamily
                             )
                         }
                     }
@@ -370,7 +481,6 @@ private fun DashboardContent(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        val context = LocalContext.current
         when (blockingMode) {
             BlockingMode.EASY -> {
                 val easyWait = settings.easyModeWaitSeconds
@@ -392,7 +502,16 @@ private fun DashboardContent(
             BlockingMode.STRICT -> {
                 BreakButton(
                     text = "Take a Break",
-                    subtext = if (metrics.remainingMillis > 0L) "You still have time, enjoy it" else if (challengeType == "MATH") "Solve math first" else "Complete pushups first",
+                    subtext = if (metrics.remainingMillis > 0L) {
+                        "You still have time, enjoy it"
+                    } else {
+                        when (challengeType) {
+                            "CHARGE_PHONE" -> "Charge phone ($challengeAmount min)"
+                            "MATH", "ADVANCED_MATH" -> "Solve math first"
+                            "SQUATS" -> "Complete squats first"
+                            else -> "Complete pushups first"
+                        }
+                    },
                     accentColor = modeAccent,
                     enabled = metrics.remainingMillis <= 0L,
                     onClick = {
@@ -459,7 +578,7 @@ private fun DashboardContent(
                     "MATH" -> "$challengeAmount Maths" to Icons.Default.Psychology
                     "ADVANCED_MATH" -> "$challengeAmount Adv Maths" to Icons.Default.Psychology
                     "SQUATS" -> "$challengeAmount Squats" to Icons.Default.FitnessCenter
-                    "CHARGE_PHONE" -> "Charge Phone" to Icons.Default.BatteryChargingFull
+                    "CHARGE_PHONE" -> "$challengeAmount min Charge" to Icons.Default.BatteryChargingFull
                     else -> "$challengeAmount Push-ups" to Icons.Default.FitnessCenter
                 }
                 NextChallengeCard(
@@ -487,312 +606,7 @@ private fun DashboardContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // ── Stat & Insight Cards Row 1 ──
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // ── Most Time Spent On ──
-            DashboardGridCard(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(145.dp),
-                label = "MOST TIME SPENT ON",
-                labelColor = modeAccent
-            ) {
-                val topUsage = metrics.topUsage
-                if (topUsage != null && topUsage.usageMillis > 0) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        AppInitialIcon(
-                            name = topUsage.appName,
-                            packageName = topUsage.packageName,
-                            size = 40,
-                            fontSize = 14
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = topUsage.appName,
-                                color = TextPrimary,
-                                fontFamily = AppFontFamily,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "${formatDurationShort(topUsage.usageMillis)} today",
-                                color = TextSecondary,
-                                fontFamily = AppFontFamily,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                } else {
-                    Column {
-                        Text(
-                            text = if (!metrics.hasUsageAccess) "Permission needed" else "No usage yet",
-                            color = TextPrimary,
-                            fontFamily = AppFontFamily,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (!metrics.hasUsageAccess) "Grant usage access" else "0m today",
-                            color = TextSecondary,
-                            fontFamily = AppFontFamily,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-
-            // ── What Scrolling Is Costing You ──
-            DashboardGridCard(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(145.dp),
-                label = "WHAT SCROLLING IS COSTING YOU",
-                labelColor = Amber500
-            ) {
-                val totalUsageText = when {
-                    !metrics.hasUsageAccess -> "Permission needed"
-                    else -> formatDurationShort(metrics.totalUsageTodayMillis)
-                }
-
-                Column {
-                    Text(
-                        text = "You've spent",
-                        color = TextSecondary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = if (!metrics.hasUsageAccess) "--" else totalUsageText,
-                        color = TextPrimary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = if (!metrics.hasUsageAccess) "Grant usage access" else "today",
-                        color = TextSecondary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ── Stat & Insight Cards Row 2 ──
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // ── Most App Opened ──
-            DashboardGridCard(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(145.dp),
-                label = "MOST APP OPENED",
-                labelColor = Amber500
-            ) {
-                val topOpened = metrics.topOpened
-                if (topOpened != null && topOpened.openCount > 0) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        AppInitialIcon(
-                            name = topOpened.appName,
-                            packageName = topOpened.packageName,
-                            size = 40,
-                            fontSize = 14
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = topOpened.appName,
-                                color = TextPrimary,
-                                fontFamily = AppFontFamily,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "${topOpened.openCount} ${if (topOpened.openCount == 1) "time" else "times"} today",
-                                color = TextSecondary,
-                                fontFamily = AppFontFamily,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                } else {
-                    Column {
-                        Text(
-                            text = if (!metrics.hasUsageAccess) "Permission needed" else "No apps opened",
-                            color = TextPrimary,
-                            fontFamily = AppFontFamily,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (!metrics.hasUsageAccess) "Grant usage access" else "0 times today",
-                            color = TextSecondary,
-                            fontFamily = AppFontFamily,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-
-            // ── Last Intervention ──
-            DashboardGridCard(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(145.dp),
-                label = "LAST INTERVENTION",
-                labelColor = StatusGreen
-            ) {
-                val lastIntervention = metrics.lastIntervention
-
-                if (lastIntervention != null) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        AppInitialIcon(
-                            name = lastIntervention.appName,
-                            packageName = lastIntervention.packageName,
-                            size = 40,
-                            fontSize = 14
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = lastIntervention.appName,
-                                color = TextPrimary,
-                                fontFamily = AppFontFamily,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = formatClockTime(lastIntervention.timestampMillis),
-                                color = TextMuted,
-                                fontFamily = AppFontFamily,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                } else {
-                    Column {
-                        Text(
-                            text = "No interventions yet",
-                            color = TextPrimary,
-                            fontFamily = AppFontFamily,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Clear today",
-                            color = TextSecondary,
-                            fontFamily = AppFontFamily,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ── Stat & Insight Cards Row 3 ──
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // ── Breaks Taken ──
-            DashboardGridCard(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(145.dp),
-                label = "BREAKS TAKEN",
-                labelColor = modeAccent
-            ) {
-                Column {
-                    Text(
-                        text = metrics.sessionsToday.toString(),
-                        color = TextPrimary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = if (metrics.sessionsToday == 1) "break today" else "breaks today",
-                        color = TextSecondary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            // ── Additional Time Spent ──
-            DashboardGridCard(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(145.dp),
-                label = "ADDITIONAL TIME SPENT",
-                labelColor = Amber500
-            ) {
-                Column {
-                    Text(
-                        text = formatDurationShort(metrics.earnedMillisToday),
-                        color = TextPrimary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "from breaks today",
-                        color = TextSecondary,
-                        fontFamily = AppFontFamily,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         // ── Protected Apps Section ──
         Column(
@@ -878,6 +692,23 @@ private fun DashboardContent(
             dismissButton = {
                 TextButton(onClick = { showStopFocusModeDialog = false }) {
                     Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    if (showReelCountExplainerDialog) {
+        ReelCountExplainerDialog(
+            isPremium = settings.isPremium,
+            onDismiss = { showReelCountExplainerDialog = false },
+            onEnableClick = {
+                if (settings.isPremium) {
+                    onEnableReelCount()
+                    showReelCountExplainerDialog = false
+                } else {
+                    android.widget.Toast.makeText(context, "Available for Premium users only", android.widget.Toast.LENGTH_SHORT).show()
+                    onNavigateToSubscription()
+                    showReelCountExplainerDialog = false
                 }
             }
         )
@@ -1044,137 +875,6 @@ private fun BreakButton(
                     modifier = Modifier.size(20.dp)
                 )
             }
-        }
-    }
-}
-
-// ── Dashboard Grid Card (Fixed Size) ──
-@Composable
-private fun DashboardGridCard(
-    modifier: Modifier = Modifier,
-    label: String,
-    labelColor: Color,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceCard.copy(alpha = 0.55f))
-            .border(1.dp, GlassBorderBrush, RoundedCornerShape(20.dp))
-            .padding(16.dp)
-    ) {
-        Text(
-            text = label,
-            color = labelColor,
-            fontFamily = AppFontFamily,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.8.sp,
-            maxLines = 2,
-            lineHeight = 13.sp
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        content()
-    }
-}
-
-// ── Insight Card ──
-@Composable
-private fun InsightCard(
-    modifier: Modifier = Modifier,
-    label: String,
-    labelColor: Color,
-    content: @Composable () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceCard.copy(alpha = 0.55f))
-            .border(1.dp, GlassBorderBrush, RoundedCornerShape(20.dp))
-            .padding(16.dp)
-    ) {
-        Text(
-            text = label,
-            color = labelColor,
-            fontFamily = AppFontFamily,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.8.sp
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        content()
-    }
-}
-
-// ── Stat Card ──
-@Composable
-private fun StatCard(
-    modifier: Modifier = Modifier,
-    label: String,
-    value: String,
-    trendLabel: String,
-    trendUp: Boolean,
-    trendSuffix: String = " this week",
-    iconColor: Color,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceCardLight.copy(alpha = 0.55f))
-            .border(1.dp, GlassBorderBrush, RoundedCornerShape(20.dp))
-            .padding(16.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(iconColor.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconColor,
-                modifier = Modifier.size(16.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = label,
-            color = TextSecondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            lineHeight = 16.sp
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = value,
-            color = TextPrimary,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-1).sp
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = if (trendUp) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = if (trendUp) StatusGreen else StatusRed,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(2.dp))
-            Text(
-                text = trendLabel,
-                color = if (trendUp) StatusGreen else StatusRed,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = trendSuffix,
-                color = TextMuted,
-                fontSize = 12.sp
-            )
         }
     }
 }

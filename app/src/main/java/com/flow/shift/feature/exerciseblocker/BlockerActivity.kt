@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -76,6 +77,15 @@ class BlockerActivity : ComponentActivity() {
                     val currentDifficulty = intentDifficulty ?: savedDifficulty
                     val advancedMathTopics by viewModel.advancedMathTopics.collectAsStateWithLifecycle()
 
+                    val isPremium by viewModel.isPremium.collectAsStateWithLifecycle()
+                    val effectiveChallengeType = remember(challengeType, isPremium) {
+                        if (!isPremium && viewModel.isPremiumChallenge(challengeType)) {
+                            viewModel.fallbackChallenge(challengeType)
+                        } else {
+                            challengeType
+                        }
+                    }
+
                     if (isHardcoreLock) {
                         HardcoreLockedScreen(
                             targetApp = targetPackage,
@@ -93,7 +103,7 @@ class BlockerActivity : ComponentActivity() {
                                 is BlockerUiState.Intro -> {
                                     BlockerIntroScreen(
                                         targetApp = targetPackage,
-                                        challengeType = challengeType,
+                                        challengeType = effectiveChallengeType,
                                         requiredAmount = requiredReps,
                                         breakDurationMinutes = breakDurationMinutes,
                                         onStartExercise = { viewModel.startExercise() },
@@ -103,7 +113,7 @@ class BlockerActivity : ComponentActivity() {
                                     )
                                 }
                                 is BlockerUiState.Exercising -> {
-                                    if (challengeType == "ADVANCED_MATH") {
+                                    if (effectiveChallengeType == "ADVANCED_MATH") {
                                         AdvancedMathChallengeScreen(
                                             requiredProblems = requiredReps,
                                             completedProblems = currentReps,
@@ -117,7 +127,7 @@ class BlockerActivity : ComponentActivity() {
                                                 }
                                             }
                                         )
-                                    } else if (challengeType == "MATH") {
+                                    } else if (effectiveChallengeType == "MATH") {
                                         MathChallengeScreen(
                                             requiredProblems = requiredReps,
                                             completedProblems = currentReps,
@@ -130,7 +140,7 @@ class BlockerActivity : ComponentActivity() {
                                                 }
                                             }
                                         )
-                                    } else if (challengeType == "SQUATS") {
+                                    } else if (effectiveChallengeType == "SQUATS") {
                                         SquatChallengeScreen(
                                             targetSquats = requiredReps,
                                             currentSquatsInitial = currentReps,
@@ -140,10 +150,14 @@ class BlockerActivity : ComponentActivity() {
                                             onSuccess = {
                                             }
                                         )
-                                    } else if (challengeType == "CHARGE_PHONE") {
+                                    } else if (effectiveChallengeType == "CHARGE_PHONE") {
                                         ChargePhoneChallengeScreen(
-                                            onChargeDetected = {
+                                            requiredMinutes = requiredReps,
+                                            onComplete = {
                                                 viewModel.completeManualChallenge(targetPackage, requiredReps, breakDurationMinutes)
+                                            },
+                                            onCancel = {
+                                                finishAffinity()
                                             }
                                         )
                                     } else {
@@ -229,8 +243,13 @@ fun BlockerIntroScreen(
             )
 
             val appDisplayName = getAppLabel(context, targetApp)
+            val durationText = if (requiredAmount == 1) "1 minute" else "$requiredAmount minutes"
             Text(
-                text = if (challengeType == "CHARGE_PHONE") "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by charging your phone." else "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by completing $requiredAmount $challengeName.",
+                text = if (challengeType == "CHARGE_PHONE") {
+                    "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by charging your phone for $durationText."
+                } else {
+                    "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by completing $requiredAmount $challengeName."
+                },
                 color = TextSecondary,
                 fontSize = 18.sp,
                 fontFamily = AppFontFamily,
@@ -250,7 +269,7 @@ fun BlockerIntroScreen(
                     text = when (challengeType) {
                         "MATH", "ADVANCED_MATH" -> "Start $requiredAmount Problems"
                         "SQUATS" -> "Start $requiredAmount Squats"
-                        "CHARGE_PHONE" -> "Start Charging Phone"
+                        "CHARGE_PHONE" -> if (requiredAmount == 1) "Start 1 Min Charge" else "Start $requiredAmount Min Charge"
                         else -> "Start $requiredAmount Push-ups"
                     },
                     color = Color.Black,
@@ -310,7 +329,7 @@ fun BlockerSuccessScreen(
                 text = when (challengeType) {
                     "MATH", "ADVANCED_MATH" -> "$requiredAmount Problems Completed!"
                     "SQUATS" -> "$requiredAmount Squats Completed!"
-                    "CHARGE_PHONE" -> "Challenge Completed!"
+                    "CHARGE_PHONE" -> if (requiredAmount == 1) "Charged for 1 Minute!" else "Charged for $requiredAmount Minutes!"
                     else -> "$requiredAmount Push-ups Completed!"
                 },
                 color = TextPrimary,
@@ -473,9 +492,13 @@ fun AdvancedMathChallengeScreen(
         } catch (e: Exception) {
             MathDifficulty.MEDIUM
         }
-        val advancedMathTopics = topics.mapNotNull {
-            try { AdvancedMathTopic.valueOf(it) } catch (e: Exception) { null }
-        }.toSet().ifEmpty { setOf(AdvancedMathTopic.POLYNOMIAL) }
+        val advancedMathTopics = if (topics.contains("RANDOM") || topics.isEmpty()) {
+            AdvancedMathTopic.values().toSet()
+        } else {
+            topics.mapNotNull {
+                try { AdvancedMathTopic.valueOf(it) } catch (e: Exception) { null }
+            }.toSet().ifEmpty { AdvancedMathTopic.values().toSet() }
+        }
         
         // Ensure random uses seed combined with problem index so it's consistent if recomposed
         // AdvancedMathProblemGenerator uses kotlin.random.Random
@@ -535,8 +558,8 @@ fun AdvancedMathChallengeScreen(
                 text = problem.question,
                 color = TextPrimary,
                 fontSize = if (problem.question.length > 20) 24.sp else 32.sp,
-                fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Black,
+                fontFamily = if (problem.topic == AdvancedMathTopic.MATRIX) FontFamily.Monospace else AppFontFamily,
+                fontWeight = if (problem.topic == AdvancedMathTopic.MATRIX) FontWeight.Bold else FontWeight.Black,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))

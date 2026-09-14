@@ -26,6 +26,13 @@ class BlockerViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
 
+    val isPremium: StateFlow<Boolean> = settingsDataStore.isPremium
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = false
+        )
+
     val challengeDifficulty: StateFlow<String> = settingsDataStore.challengeDifficulty
         .stateIn(
             scope = viewModelScope,
@@ -37,8 +44,11 @@ class BlockerViewModel @Inject constructor(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = setOf("POLYNOMIAL")
+            initialValue = setOf("RANDOM")
         )
+
+    fun isPremiumChallenge(type: String): Boolean = settingsDataStore.isPremiumChallenge(type)
+    fun fallbackChallenge(type: String): String = settingsDataStore.fallbackChallenge(type)
 
     private val _uiState = MutableStateFlow<BlockerUiState>(BlockerUiState.Intro)
     val uiState: StateFlow<BlockerUiState> = _uiState.asStateFlow()

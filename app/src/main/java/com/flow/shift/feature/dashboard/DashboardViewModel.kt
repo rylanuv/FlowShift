@@ -6,6 +6,7 @@ import com.flow.shift.core.database.BlockedAppDao
 import com.flow.shift.core.database.BlockedAppEntity
 import com.flow.shift.core.database.InterventionDao
 import com.flow.shift.core.database.InterventionEntity
+import com.flow.shift.core.database.ReelEventDao
 import com.flow.shift.core.database.UserGamificationDao
 import com.flow.shift.core.database.UserGamificationEntity
 import com.flow.shift.core.database.WorkoutSessionDao
@@ -35,6 +36,7 @@ class DashboardViewModel @Inject constructor(
     blockedAppDao: BlockedAppDao,
     workoutSessionDao: WorkoutSessionDao,
     interventionDao: InterventionDao,
+    private val reelEventDao: ReelEventDao,
     private val settingsDataStore: SettingsDataStore,
     private val usageTracker: UsageTracker
 ) : ViewModel() {
@@ -74,8 +76,10 @@ class DashboardViewModel @Inject constructor(
     private val settingsFlow = combine(
         settingsFlow1,
         settingsFlow2,
-        settingsDataStore.preventDisablingFocusMode
-    ) { t1, t2, preventDisabling ->
+        settingsDataStore.preventDisablingFocusMode,
+        settingsDataStore.showReelCount,
+        settingsDataStore.isPremium
+    ) { t1, t2, preventDisabling, showReelCount, isPremium ->
         DashboardSettings(
             blockingMode = BlockingMode.fromString(t1.first),
             challengeType = t1.second,
@@ -83,9 +87,29 @@ class DashboardViewModel @Inject constructor(
             breakDurationMinutes = t2.first,
             targetScreenTime = t2.second,
             easyModeWaitSeconds = t2.third,
-            preventDisablingFocusMode = preventDisabling
+            preventDisablingFocusMode = preventDisabling,
+            showReelCount = showReelCount,
+            isPremium = isPremium
         )
     }
+
+    private val reelsTodayFlow = combine(
+        settingsDataStore.reelCountToday,
+        settingsDataStore.reelCountDateMillis,
+        reelEventDao.getAllReelEvents()
+    ) { storeCount, storeDate, events ->
+        val now = System.currentTimeMillis()
+        val startOfDay = Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val dbCount = events.count { it.timestamp >= startOfDay }
+        val datastoreCount = if (storeDate == startOfDay) storeCount else 0
+        maxOf(dbCount, datastoreCount)
+    }.flowOn(Dispatchers.IO)
 
     private val metricsFlow = combine(
         blockedAppDao.getEnabledBlockedApps(),
@@ -100,12 +124,13 @@ class DashboardViewModel @Inject constructor(
     val uiState: StateFlow<DashboardUiState> = combine(
         gamificationFlow,
         settingsFlow,
-        metricsFlow
-    ) { entity, settings, metrics ->
+        metricsFlow,
+        reelsTodayFlow
+    ) { entity, settings, metrics, reelsToday ->
         DashboardUiState.Success(
             data = entity,
             settings = settings,
-            metrics = metrics
+            metrics = metrics.copy(totalReelsToday = reelsToday)
         )
     }.stateIn(
         scope = viewModelScope,
@@ -208,6 +233,12 @@ class DashboardViewModel @Inject constructor(
             settingsDataStore.setFocusModeUntilMillis(0L)
         }
     }
+
+    fun setShowReelCount(enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            settingsDataStore.setShowReelCount(enabled)
+        }
+    }
 }
 
 sealed interface DashboardUiState {
@@ -221,12 +252,14 @@ sealed interface DashboardUiState {
 
 data class DashboardSettings(
     val blockingMode: BlockingMode = BlockingMode.EASY,
-    val challengeType: String = "PUSHUPS",
-    val challengeAmount: Int = 15,
+    val challengeType: String = "MATH",
+    val challengeAmount: Int = 5,
     val breakDurationMinutes: Int = 5,
     val targetScreenTime: String = "2h",
     val easyModeWaitSeconds: Int = 90,
-    val preventDisablingFocusMode: Boolean = false
+    val preventDisablingFocusMode: Boolean = false,
+    val showReelCount: Boolean = false,
+    val isPremium: Boolean = false
 )
 
 data class DashboardMetrics(
@@ -243,7 +276,8 @@ data class DashboardMetrics(
     val topUsage: AppUsageSummary? = null,
     val topOpened: AppOpensSummary? = null,
     val lastIntervention: LastInterventionSummary? = null,
-    val focusModeUntilMillis: Long = 0L
+    val focusModeUntilMillis: Long = 0L,
+    val totalReelsToday: Int = 0
 )
 
 data class ProtectedAppSummary(
