@@ -1202,6 +1202,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         val breakDurationMinutes = settingsDataStore.breakDurationMinutes.first()
 
         val intent = when (blockingMode) {
+            BlockingMode.EASY -> return
             BlockingMode.STRICT -> Intent(this, BlockerActivity::class.java).apply {
                 putExtra("TARGET_PACKAGE", packageName)
                 putExtra("REQUIRED_REPS", challengeAmount)

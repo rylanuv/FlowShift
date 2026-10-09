@@ -143,7 +143,8 @@ class SettingsViewModel @Inject constructor(
     ) { eightState, nineContent ->
         NineState(eightState, nineContent.devMode, nineContent.pretendSubscribed, nineContent.bypassDowngradeWaitTime, nineContent.bypassTargetLock)
     }
-    .combine(gamificationFlow) { nineState, gamification ->
+    .combine(gamificationFlow) { nineState, gamification -> nineState to gamification }
+    .combine(settingsDataStore.dailyReelLimit) { (nineState, gamification), dailyReelLimit ->
         SettingsUiState(
             protection = nineState.eightState.sevenState.sixState.protection,
             breakRules = nineState.eightState.sevenState.sixState.breakRules,
@@ -161,7 +162,8 @@ class SettingsViewModel @Inject constructor(
             isDeveloperModeEnabled = nineState.isDeveloperModeEnabled,
             pretendSubscribed = nineState.pretendSubscribed,
             bypassDowngradeWaitTime = nineState.bypassDowngradeWaitTime,
-            bypassTargetLock = nineState.bypassTargetLock
+            bypassTargetLock = nineState.bypassTargetLock,
+            dailyReelLimit = dailyReelLimit
         )
     }
     .stateIn(
@@ -203,6 +205,7 @@ class SettingsViewModel @Inject constructor(
     fun setDailyScreenTime(time: String) = launch { settingsDataStore.setDailyScreenTime(time) }
     fun setTargetScreenTime(time: String) = launch { settingsDataStore.setTargetScreenTime(time) }
     fun setTargetScreenTimeLockedUntil(timeMillis: Long) = launch { settingsDataStore.setTargetScreenTimeLockedUntil(timeMillis) }
+    fun setDailyReelLimit(limit: Int) = launch { settingsDataStore.setDailyReelLimit(limit) }
 
     // ── Break Rules ──
     fun setRequireChallengeForBreak(enabled: Boolean) = launch { settingsDataStore.setRequireChallengeForBreak(enabled) }
@@ -305,7 +308,8 @@ data class SettingsUiState(
     val isDeveloperModeEnabled: Boolean = false,
     val pretendSubscribed: Boolean = false,
     val bypassDowngradeWaitTime: Boolean = false,
-    val bypassTargetLock: Boolean = false
+    val bypassTargetLock: Boolean = false,
+    val dailyReelLimit: Int = 200
 )
 
 data class ProtectionState(

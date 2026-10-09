@@ -49,3 +49,10 @@ fun FlowShiftTheme(
   MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }
 
+@Composable
+fun ReelsRotTheme(
+  darkTheme: Boolean = isSystemInDarkTheme(),
+  dynamicColor: Boolean = true,
+  content: @Composable () -> Unit,
+) = FlowShiftTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, content = content)
+

@@ -44,6 +44,14 @@ class OnboardingViewModel @Inject constructor(
     private val _selectedScreenTime = MutableStateFlow<Float?>(savedStateHandle.get<Float>("selectedScreenTime"))
     val selectedScreenTime: StateFlow<Float?> = _selectedScreenTime.asStateFlow()
 
+    val presetValues = listOf(25, 50, 75, 100, 150, 200, 300)
+    private val _selectedDailyLimit = MutableStateFlow(savedStateHandle.get<Int>("selectedDailyLimit") ?: 200)
+    val selectedDailyLimit: StateFlow<Int> = _selectedDailyLimit.asStateFlow()
+    private val _isCustomLimit = MutableStateFlow(savedStateHandle.get<Boolean>("isCustomLimit") ?: false)
+    val isCustomLimit: StateFlow<Boolean> = _isCustomLimit.asStateFlow()
+    private val _customLimitText = MutableStateFlow(savedStateHandle.get<String>("customLimitText") ?: "")
+    val customLimitText: StateFlow<String> = _customLimitText.asStateFlow()
+
     // ── Step 3: Target Screen Time ──
     private val _selectedTargetScreenTime = MutableStateFlow<Float?>(savedStateHandle.get<Float>("selectedTargetScreenTime"))
     val selectedTargetScreenTime: StateFlow<Float?> = _selectedTargetScreenTime.asStateFlow()
@@ -174,6 +182,28 @@ class OnboardingViewModel @Inject constructor(
         savedStateHandle["selectedScreenTime"] = time
     }
 
+    fun selectPresetIndex(index: Int) {
+        if (index in presetValues.indices) {
+            _isCustomLimit.value = false
+            _selectedDailyLimit.value = presetValues[index]
+            savedStateHandle["isCustomLimit"] = false
+            savedStateHandle["selectedDailyLimit"] = presetValues[index]
+        } else {
+            _isCustomLimit.value = true
+            savedStateHandle["isCustomLimit"] = true
+        }
+    }
+
+    fun setCustomLimitText(value: String) {
+        val digits = value.filter(Char::isDigit)
+        _customLimitText.value = digits
+        _isCustomLimit.value = true
+        digits.toIntOrNull()?.takeIf { it > 0 }?.let { _selectedDailyLimit.value = it }
+        savedStateHandle["customLimitText"] = digits
+        savedStateHandle["isCustomLimit"] = true
+        savedStateHandle["selectedDailyLimit"] = _selectedDailyLimit.value
+    }
+
     fun selectTargetScreenTime(time: Float) {
         _selectedTargetScreenTime.value = time
         savedStateHandle["selectedTargetScreenTime"] = time
@@ -238,6 +268,7 @@ class OnboardingViewModel @Inject constructor(
                 }
                 settingsDataStore.setTargetScreenTime(str)
             }
+            settingsDataStore.setDailyReelLimit(_selectedDailyLimit.value)
 
             // Save mode
             settingsDataStore.setBlockingMode(_selectedMode.value.name)

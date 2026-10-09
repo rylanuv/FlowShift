@@ -857,6 +857,7 @@ private fun UpgradeConfirmationDialog(
         shape = RoundedCornerShape(24.dp),
         icon = {
             val color = when (targetMode) {
+                BlockingMode.EASY -> ModeEasyAccent
                 BlockingMode.STRICT -> ModeStrictAccent
                 BlockingMode.HARDCORE -> ModeHardcoreAccent
             }
@@ -869,6 +870,7 @@ private fun UpgradeConfirmationDialog(
             ) {
                 Icon(
                     imageVector = when (targetMode) {
+                        BlockingMode.EASY -> Icons.Default.Timer
                         BlockingMode.STRICT -> Icons.Default.Psychology
                         BlockingMode.HARDCORE -> Icons.Default.Lock
                     },
@@ -928,6 +930,7 @@ private fun UpgradeConfirmationDialog(
                 onClick = onConfirm,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = when (targetMode) {
+                        BlockingMode.EASY -> ModeEasyAccent
                         BlockingMode.STRICT -> ModeStrictAccent
                         BlockingMode.HARDCORE -> ModeHardcoreAccent
                     }
@@ -1030,6 +1033,7 @@ private fun DowngradeConfirmationDialog(
                 enabled = downgradeWaitRemaining == 0 || autoDowngradeAtMidnight,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = when (targetMode) {
+                        BlockingMode.EASY -> ModeEasyAccent
                         BlockingMode.STRICT -> ModeStrictAccent
                         BlockingMode.HARDCORE -> ModeHardcoreAccent
                     }
@@ -1053,6 +1057,7 @@ private fun DowngradeConfirmationDialog(
 
 private fun getModeDescription(mode: BlockingMode): String {
     return when (mode) {
+        BlockingMode.EASY -> "A lighter blocking mode without mandatory challenges."
         BlockingMode.STRICT -> "Perform pushups or solve advanced maths to earn scroll time."
         BlockingMode.HARDCORE -> "Once the timer hits, you can't scroll anymore."
     }

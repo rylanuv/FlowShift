@@ -28,6 +28,15 @@ class ModesViewModel @Inject constructor(
             initialValue = false
         )
 
+    val strictChallengeType = settingsDataStore.strictChallengeType.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "MATH")
+    val strictChallengeAmount = settingsDataStore.strictChallengeAmount.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 5)
+    val strictChallengeDifficulty = settingsDataStore.challengeDifficulty.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Medium")
+    val advancedMathTopics = settingsDataStore.advancedMathTopics.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), setOf("RANDOM"))
+    val breakDurationMinutes = settingsDataStore.breakDurationMinutes.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 5)
+    val easyModeWaitSeconds = settingsDataStore.easyModeWaitSeconds.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 90)
+    private val _activeBreakUntilMillis = MutableStateFlow(0L)
+    val activeBreakUntilMillis: StateFlow<Long> = _activeBreakUntilMillis.asStateFlow()
+
     val uiState: StateFlow<ModesUiState> = combine(
         settingsDataStore.blockingMode,
         settingsDataStore.lastDowngradeTimeMillis,
@@ -148,6 +157,18 @@ class ModesViewModel @Inject constructor(
             settingsDataStore.setAutoDowngradeAtMidnight(enabled)
         }
     }
+
+    fun setStrictChallengeType(type: String) = viewModelScope.launch { settingsDataStore.setStrictChallengeType(type) }
+    fun setStrictChallengeAmount(amount: Int) = viewModelScope.launch { settingsDataStore.setStrictChallengeAmount(amount) }
+    fun setStrictChallengeDifficulty(difficulty: String) = viewModelScope.launch { settingsDataStore.setChallengeDifficulty(difficulty) }
+    fun toggleAdvancedMathTopic(topic: String) = viewModelScope.launch {
+        val updated = advancedMathTopics.value.toMutableSet().apply {
+            if (!add(topic)) remove(topic)
+            if (isEmpty()) add("RANDOM")
+        }
+        settingsDataStore.setAdvancedMathTopics(updated)
+    }
+    fun setBreakDurationMinutes(minutes: Int) = viewModelScope.launch { settingsDataStore.setBreakDurationMinutes(minutes) }
 }
 
 data class ModesUiState(

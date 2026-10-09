@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Star
@@ -154,6 +155,7 @@ private fun DashboardContent(
 
     // Mode-specific accent color
     val modeAccent = when (blockingMode) {
+        BlockingMode.EASY -> ModeEasyAccent
         BlockingMode.STRICT -> ModeStrictAccent
         BlockingMode.HARDCORE -> ModeHardcoreAccent
     }
@@ -498,6 +500,15 @@ private fun DashboardContent(
         // ── 4. BREAK BUTTON ──
         // ═══════════════════════════════════════════
         when (blockingMode) {
+            BlockingMode.EASY -> {
+                BreakButton(
+                    text = "Easy Mode",
+                    subtext = "Switch to Discipline mode for challenges",
+                    accentColor = modeAccent,
+                    enabled = false,
+                    onClick = { }
+                )
+            }
             BlockingMode.STRICT -> {
                 BreakButton(
                     text = "Take a Break",
@@ -545,6 +556,17 @@ private fun DashboardContent(
         // ── 5. MODE CONFIGURATION CARD ──
         // ═══════════════════════════════════════════
         when (blockingMode) {
+            BlockingMode.EASY -> {
+                NextChallengeCard(
+                    icon = Icons.Default.Settings,
+                    iconTint = modeAccent,
+                    label = "EASY MODE",
+                    title = "No challenge configured",
+                    subtitle = "Choose a stricter mode to add challenges.",
+                    accentColor = modeAccent,
+                    onClick = onNavigateToModes
+                )
+            }
             BlockingMode.STRICT -> {
                 val (title, icon) = when (challengeType) {
                     "MATH" -> "$challengeAmount Maths" to Icons.Default.Psychology

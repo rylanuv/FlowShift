@@ -13,6 +13,7 @@ enum class BlockingMode(
     val backgroundImageRes: Int,
     val backgroundAlpha: Float
 ) {
+    EASY(1, "Easy", R.drawable.main_screen, 0.70f),
     STRICT(2, "Discipline", R.drawable.main_screen, 0.67f),
     HARDCORE(3, "Hardcore", R.drawable.hardcore_home, 0.65f);
 
@@ -21,7 +22,7 @@ enum class BlockingMode(
 
     companion object {
         fun fromString(value: String): BlockingMode {
-            return entries.find { it.name == value } ?: STRICT
+            return entries.find { it.name == value } ?: EASY
         }
     }
 }

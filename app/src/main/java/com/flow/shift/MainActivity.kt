@@ -28,6 +28,7 @@ import com.flow.shift.core.datastore.SettingsDataStore
 import com.flow.shift.feature.appselection.AppSelectionScreen
 import com.flow.shift.feature.dashboard.DashboardScreen
 import com.flow.shift.feature.modes.HardcoreModeSettingsScreen
+import com.flow.shift.feature.modes.EasyModeSettingsScreen
 import com.flow.shift.feature.modes.ModesScreen
 import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.feature.onboarding.OnboardingScreen
@@ -276,9 +277,7 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
                                 onNavigateToEasyModeSettings = { navController.navigate("easyModeSettings") },
                                 onNavigateToSubscription = { navController.navigate("subscription") }
                             )
-                            2 -> StatisticsScreen(
-                                showBackground = false
-                            )
+                            2 -> StatisticsScreen(onNavigateBack = {})
                             3 -> SettingsScreen(
                                 showBackground = false,
                                 onNavigateToAppSelection = { navController.navigate("appSelection") },
@@ -310,6 +309,9 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
+            composable("easyModeSettings") {
+                EasyModeSettingsScreen(onNavigateBack = { navController.popBackStack() })
+            }
             composable("settings") {
                 SettingsScreen(
                     showBackground = true,
@@ -325,7 +327,6 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
             }
             composable("stats") {
                 StatisticsScreen(
-                    showBackground = true,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
