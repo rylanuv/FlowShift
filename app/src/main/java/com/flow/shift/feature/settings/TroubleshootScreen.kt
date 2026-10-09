@@ -80,8 +80,12 @@ fun TroubleshootScreen(
         )
     }
 
-    val isChineseOEM = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
-    val needsAutostartGuidance = Build.MANUFACTURER.lowercase() in listOf("xiaomi", "redmi", "poco", "vivo", "iqoo")
+    val manufacturer = Build.MANUFACTURER.lowercase()
+    val brand = Build.BRAND.lowercase()
+    val isChineseOEM = manufacturer in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor") ||
+            brand in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+    val needsAutostartGuidance = manufacturer in listOf("xiaomi", "redmi", "poco", "vivo", "iqoo") ||
+            brand in listOf("xiaomi", "redmi", "poco", "vivo", "iqoo")
     val autostartCheckSupported = remember { canCheckAutostart(context) }
     var userInteractedAutostart by remember { mutableStateOf(false) }
     var hasAutostartPermission by remember {
@@ -260,7 +264,7 @@ fun TroubleshootScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "FlowShift requires several permissions to work correctly. Make sure all are granted.",
+                    text = "ReelsRot requires several permissions to work correctly. Make sure all are granted.",
                     color = TextSecondary,
                     fontSize = 14.sp,
                     fontFamily = AppFontFamily,
@@ -341,7 +345,7 @@ fun TroubleshootScreen(
                 PermissionItem(
                     icon = Icons.Default.BatteryAlert,
                     title = "Battery Optimization",
-                    description = "Prevents your phone from killing FlowShift in the background. Critical for reliable blocking.",
+                    description = "Prevents your phone from killing ReelsRot in the background. Critical for reliable blocking.",
                     isGranted = hasBatteryOptimizationExemption,
                     onClick = {
                         openBatteryOptimizationSettings(context)
@@ -354,7 +358,7 @@ fun TroubleshootScreen(
                     PermissionItem(
                         icon = Icons.Default.Settings,
                         title = "Autostart",
-                        description = "Required for your phone to keep FlowShift running in the background.",
+                        description = "Required for your phone to keep ReelsRot running in the background.",
                         isGranted = hasAutostartPermission,
                         onClick = {
                             userInteractedAutostart = true
@@ -370,9 +374,9 @@ fun TroubleshootScreen(
                         icon = Icons.Default.OpenInNew,
                         title = if (isRealme) "Allow Background Activity" else "Background Windows",
                         description = if (isRealme) {
-                            "Opens Battery usage, where you can keep FlowShift running in the background."
+                            "Opens Battery usage, where you can keep ReelsRot running in the background."
                         } else {
-                            "Allows FlowShift to open the blocker from the background."
+                            "Allows ReelsRot to open the blocker from the background."
                         },
                         isGranted = hasBackgroundWindowsPermission,
                         onClick = {
@@ -597,19 +601,12 @@ private fun hasAccessibilityPermission(context: Context): Boolean {
 
 private fun canCheckAutostart(context: Context): Boolean {
     val manufacturer = Build.MANUFACTURER.lowercase()
-    if (manufacturer in listOf("xiaomi", "redmi", "poco")) {
+    val brand = Build.BRAND.lowercase()
+    if (manufacturer in listOf("xiaomi", "redmi", "poco") || brand in listOf("xiaomi", "redmi", "poco")) {
         return true
     }
     return try {
-        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val op = try {
-            val field = AppOpsManager::class.java.getDeclaredField("OP_AUTO_START")
-            field.getInt(null)
-        } catch (e: Exception) {
-            10008
-        }
-        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
-        method.invoke(appOps, op, Process.myUid(), context.packageName)
+        AppOpsManager::class.java.getDeclaredField("OP_AUTO_START")
         true
     } catch (e: Exception) {
         false
@@ -618,8 +615,13 @@ private fun canCheckAutostart(context: Context): Boolean {
 
 private fun hasAutostartPermission(context: Context): Boolean {
     val manufacturer = Build.MANUFACTURER.lowercase()
-    if (manufacturer !in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")) {
-        return true
+    val brand = Build.BRAND.lowercase()
+    val isXiaomiFamily = manufacturer in listOf("xiaomi", "redmi", "poco") || brand in listOf("xiaomi", "redmi", "poco")
+
+    if (!isXiaomiFamily) {
+        val isOtherChineseOEM = manufacturer in listOf("oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor") ||
+                brand in listOf("oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+        return !isOtherChineseOEM
     }
 
     try {

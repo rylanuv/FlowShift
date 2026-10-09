@@ -53,9 +53,9 @@ fun FocusModeSliderButton(
     var width by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
-    val thumbSizeDp = 64.dp
+    val thumbSizeDp = 50.dp
     val thumbSizePx = with(density) { thumbSizeDp.toPx() }
-    val paddingPx = with(density) { 8.dp.toPx() }
+    val paddingPx = with(density) { 7.dp.toPx() }
 
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
@@ -103,16 +103,10 @@ fun FocusModeSliderButton(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(80.dp)
-            .shadow(
-                elevation = if (isDragging) 16.dp else if (enabled) 8.dp else 0.dp,
-                shape = shape,
-                ambientColor = actualAccentColor.copy(alpha = 0.5f),
-                spotColor = actualAccentColor
-            )
+            .height(64.dp)
             .clip(shape)
-            .background(Color(0xFF1E1E2E).copy(alpha = containerAlpha)) // Dark track background
-            .border(1.dp, actualAccentColor.copy(alpha = 0.3f * containerAlpha), shape)
+            .background(Color(0xD916161C).copy(alpha = containerAlpha))
+            .border(1.dp, Color.White.copy(alpha = 0.08f * containerAlpha), shape)
             .onSizeChanged { width = it.width },
         contentAlignment = Alignment.CenterStart
     ) {
@@ -226,11 +220,11 @@ fun FocusModeSliderButton(
                     // Draggable Thumb
                     Box(
                         modifier = Modifier
-                            .padding(8.dp)
+                            .padding(7.dp)
                             .offset { IntOffset(animatedOffset.roundToInt(), 0) }
                             .size(thumbSizeDp)
                             .scale(thumbScale)
-                            .shadow(elevation = if (isDragging) 8.dp else 4.dp, shape = CircleShape)
+                            .shadow(elevation = if (isDragging) 6.dp else 2.dp, shape = CircleShape)
                             .clip(CircleShape)
                             .background(actualAccentColor.copy(alpha = containerAlpha))
                             .then(
@@ -271,7 +265,7 @@ fun FocusModeSliderButton(
                             imageVector = Icons.Default.Lock,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }

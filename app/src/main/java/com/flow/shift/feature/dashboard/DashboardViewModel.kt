@@ -68,9 +68,10 @@ class DashboardViewModel @Inject constructor(
     private val settingsFlow2 = combine(
         settingsDataStore.breakDurationMinutes,
         settingsDataStore.targetScreenTime,
-        settingsDataStore.easyModeWaitSeconds
-    ) { breakMinutes, targetTime, easyWaitSeconds ->
-        Triple(breakMinutes, targetTime, easyWaitSeconds)
+        settingsDataStore.easyModeWaitSeconds,
+        settingsDataStore.dailyReelLimit
+    ) { breakMinutes, targetTime, easyWaitSeconds, dailyReelLimit ->
+        DashboardSettingsTuple2(breakMinutes, targetTime, easyWaitSeconds, dailyReelLimit)
     }
 
     private val settingsFlow = combine(
@@ -84,12 +85,13 @@ class DashboardViewModel @Inject constructor(
             blockingMode = BlockingMode.fromString(t1.first),
             challengeType = t1.second,
             challengeAmount = t1.third,
-            breakDurationMinutes = t2.first,
-            targetScreenTime = t2.second,
-            easyModeWaitSeconds = t2.third,
+            breakDurationMinutes = t2.breakMinutes,
+            targetScreenTime = t2.targetTime,
+            easyModeWaitSeconds = t2.easyWaitSeconds,
             preventDisablingFocusMode = preventDisabling,
             showReelCount = showReelCount,
-            isPremium = isPremium
+            isPremium = isPremium,
+            dailyReelLimit = t2.dailyReelLimit
         )
     }
 
@@ -250,8 +252,15 @@ sealed interface DashboardUiState {
     ) : DashboardUiState
 }
 
+private data class DashboardSettingsTuple2(
+    val breakMinutes: Int,
+    val targetTime: String,
+    val easyWaitSeconds: Int,
+    val dailyReelLimit: Int
+)
+
 data class DashboardSettings(
-    val blockingMode: BlockingMode = BlockingMode.EASY,
+    val blockingMode: BlockingMode = BlockingMode.STRICT,
     val challengeType: String = "MATH",
     val challengeAmount: Int = 5,
     val breakDurationMinutes: Int = 5,
@@ -259,7 +268,8 @@ data class DashboardSettings(
     val easyModeWaitSeconds: Int = 90,
     val preventDisablingFocusMode: Boolean = false,
     val showReelCount: Boolean = false,
-    val isPremium: Boolean = false
+    val isPremium: Boolean = false,
+    val dailyReelLimit: Int = 200
 )
 
 data class DashboardMetrics(

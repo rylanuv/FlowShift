@@ -1,14 +1,9 @@
 package com.flow.shift.feature.dashboard
 
-import androidx.compose.animation.animateColor
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,61 +17,62 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.LocalCafe
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
-import com.flow.shift.core.designsystem.ReelCountExplainerDialog
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.paint
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.flow.shift.R
+import com.flow.shift.core.database.UserGamificationEntity
+import com.flow.shift.core.designsystem.rememberAppIconBitmap
 import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.theme.*
-import androidx.compose.ui.draw.paint
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
-import com.flow.shift.core.designsystem.rememberAppIconBitmap
-import com.flow.shift.R
 
+// ── Glass border brush for card edges ──
 private val GlassBorderBrush = Brush.linearGradient(
     colors = listOf(
-        Color.White.copy(alpha = 0.25f),
-        Color.White.copy(alpha = 0.05f)
+        Color.White.copy(alpha = 0.30f),
+        Color.White.copy(alpha = 0.10f)
     )
 )
 
@@ -86,9 +82,6 @@ fun DashboardScreen(
     showBackground: Boolean = false,
     onNavigateToApps: () -> Unit,
     onNavigateToModes: () -> Unit = {},
-    onNavigateToEasyModeSettings: () -> Unit = {},
-    onNavigateToDisciplineModeSettings: () -> Unit = {},
-    onNavigateToHardcoreModeSettings: () -> Unit = {},
     onNavigateToStats: () -> Unit = {},
     onNavigateToSubscription: () -> Unit = {}
 ) {
@@ -99,7 +92,8 @@ fun DashboardScreen(
             .fillMaxSize()
             .then(
                 if (showBackground) {
-                    val currentMode = (uiState as? DashboardUiState.Success)?.settings?.blockingMode ?: BlockingMode.EASY
+                    val currentMode = (uiState as? DashboardUiState.Success)?.settings?.blockingMode
+                        ?: BlockingMode.STRICT
                     val bgRes = currentMode.backgroundImageRes
                     val bgAlpha = currentMode.backgroundAlpha
                     Modifier
@@ -108,7 +102,7 @@ fun DashboardScreen(
                             contentScale = ContentScale.Crop,
                             alpha = bgAlpha
                         )
-                        .background(SurfaceBlack.copy(alpha = 0.25f))
+                        .background(SurfaceBlack.copy(alpha = 0.85f))
                 } else {
                     Modifier.background(Color.Transparent)
                 }
@@ -128,9 +122,6 @@ fun DashboardScreen(
                     metrics = state.metrics,
                     onNavigateToApps = onNavigateToApps,
                     onNavigateToModes = onNavigateToModes,
-                    onNavigateToEasyModeSettings = onNavigateToEasyModeSettings,
-                    onNavigateToDisciplineModeSettings = onNavigateToDisciplineModeSettings,
-                    onNavigateToHardcoreModeSettings = onNavigateToHardcoreModeSettings,
                     onNavigateToStats = onNavigateToStats,
                     onNavigateToSubscription = onNavigateToSubscription,
                     onEnableReelCount = { viewModel.setShowReelCount(true) },
@@ -144,14 +135,11 @@ fun DashboardScreen(
 
 @Composable
 private fun DashboardContent(
-    data: com.flow.shift.core.database.UserGamificationEntity,
+    data: UserGamificationEntity,
     settings: DashboardSettings,
     metrics: DashboardMetrics,
     onNavigateToApps: () -> Unit,
     onNavigateToModes: () -> Unit,
-    onNavigateToEasyModeSettings: () -> Unit,
-    onNavigateToDisciplineModeSettings: () -> Unit,
-    onNavigateToHardcoreModeSettings: () -> Unit,
     onNavigateToStats: () -> Unit,
     onNavigateToSubscription: () -> Unit = {},
     onEnableReelCount: () -> Unit = {},
@@ -159,7 +147,6 @@ private fun DashboardContent(
     onStopFocusMode: () -> Unit
 ) {
     val context = LocalContext.current
-    var showReelCountExplainerDialog by remember { mutableStateOf(false) }
     val blockingMode = settings.blockingMode
     val challengeType = settings.challengeType
     val challengeAmount = settings.challengeAmount
@@ -167,10 +154,11 @@ private fun DashboardContent(
 
     // Mode-specific accent color
     val modeAccent = when (blockingMode) {
-        BlockingMode.EASY -> ModeEasyAccent
         BlockingMode.STRICT -> ModeStrictAccent
         BlockingMode.HARDCORE -> ModeHardcoreAccent
     }
+
+    // Real-time ticker for countdowns
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -178,39 +166,55 @@ private fun DashboardContent(
             now = System.currentTimeMillis()
         }
     }
+
     val isFocusModeActive = metrics.focusModeUntilMillis > now && blockingMode != BlockingMode.HARDCORE
     val isBreakActive = metrics.unlockExpiresAtMillis != null && metrics.unlockExpiresAtMillis > now
+    val isTargetReached = settings.dailyReelLimit > 0 && metrics.totalReelsToday >= settings.dailyReelLimit
 
-    val displayMillis = when {
-        isFocusModeActive -> metrics.focusModeUntilMillis - now
-        isBreakActive -> metrics.unlockExpiresAtMillis!! - now
-        else -> metrics.remainingMillis
+    val reelProgress = if (settings.dailyReelLimit > 0) {
+        (metrics.totalReelsToday.toFloat() / settings.dailyReelLimit.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
     }
 
     val animatedProgress by animateFloatAsState(
-        targetValue = if (isBreakActive || isFocusModeActive) 1f else metrics.remainingProgress,
+        targetValue = if (isBreakActive || isFocusModeActive) 1f else reelProgress,
         animationSpec = tween(durationMillis = 1200, delayMillis = 300),
         label = "progress"
     )
-    val remainingLabel = formatRemainingDurationShort(displayMillis)
+
+    val heroCenterText = when {
+        isFocusModeActive -> formatRemainingDurationShort(metrics.focusModeUntilMillis - now)
+        isBreakActive -> formatRemainingDurationShort(metrics.unlockExpiresAtMillis!! - now)
+        else -> "${metrics.totalReelsToday}/${settings.dailyReelLimit}"
+    }
+    val heroFontSize = when {
+        heroCenterText.length > 7 -> 32.sp
+        heroCenterText.length > 5 -> 38.sp
+        else -> 44.sp
+    }
     val topLabel = when {
         isFocusModeActive -> "FOCUS MODE"
         isBreakActive -> "BREAK TIME"
-        else -> "TIME REMAINING"
-    }
-    val nextLabel = when {
-        isFocusModeActive -> "Stay focused"
-        isBreakActive -> "Enjoy your break"
-        metrics.protectedApps.isEmpty() -> "Add protected apps"
-        else -> "Earn a break"
+        else -> "REELS SCROLLED"
     }
 
     val activeColor by animateColorAsState(
-        targetValue = if (isFocusModeActive) Color(0xFFD32F2F) /* Deep Red */ else modeAccent,
+        targetValue = if (isFocusModeActive) Color(0xFFD32F2F) else modeAccent,
         animationSpec = tween(500),
         label = "activeColor"
     )
-    val glowAlpha = if (isFocusModeActive) 0.4f else 0f
+
+    // Motivational status message
+    val statusMessage = when {
+        isFocusModeActive -> "Stay focused \uD83D\uDD12"
+        isBreakActive -> "Enjoy your break ☕"
+        isTargetReached -> "Limit reached! \uD83D\uDEAB"
+        reelProgress >= 0.75f -> "Almost there, stay strong \uD83D\uDCAA"
+        reelProgress >= 0.5f -> "Halfway through your limit"
+        reelProgress > 0f -> "Keep going strong \uD83D\uDCAA"
+        else -> "No reels scrolled yet ✨"
+    }
 
     var showAddMoreBottomSheet by remember { mutableStateOf(false) }
     var showStopFocusModeDialog by remember { mutableStateOf(false) }
@@ -223,287 +227,282 @@ private fun DashboardContent(
     ) {
         Spacer(modifier = Modifier.height(20.dp))
 
-        // ── Header ──
+        // ═══════════════════════════════════════════
+        // ── 1. GREETING HEADER + MODE BADGE ──
+        // ═══════════════════════════════════════════
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(style = SpanStyle(color = TextPrimary)) {
-                            append("Flow")
-                        }
-                        withStyle(style = SpanStyle(color = modeAccent)) {
-                            append("Shift")
-                        }
-                    },
-                    fontFamily = AppFontFamily,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.5).sp
-                )
-                Text(
-                    text = "Stay focused, stay free",
-                    color = TextMuted,
-                    fontFamily = AppFontFamily,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal
-                )
-            }
-
-            IconButton(
-                onClick = onNavigateToStats,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceCard.copy(alpha = 0.65f))
-                    .border(1.dp, GlassBorderBrush, RoundedCornerShape(14.dp))
-            ) {
-                Icon(
-                    imageVector = Icons.Default.BarChart,
-                    contentDescription = "Statistics",
-                    tint = modeAccent,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(style = SpanStyle(color = TextPrimary)) {
+                        append("Reels")
+                    }
+                    withStyle(style = SpanStyle(color = modeAccent)) {
+                        append("Rot")
+                    }
+                },
+                fontFamily = AppFontFamily,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.5).sp
+            )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // ── Hero Card: Screen Time Ring ──
+        // ═══════════════════════════════════════════
+                // ??? 2. HERO PROGRESS RING ???
+        // ---------------------------------------------------------------------------
+        val blobPath = remember { Path() }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(
-                    elevation = if (isFocusModeActive) 16.dp else 0.dp,
-                    shape = RoundedCornerShape(28.dp),
-                    ambientColor = activeColor.copy(alpha = glowAlpha),
-                    spotColor = activeColor.copy(alpha = glowAlpha)
-                )
-                .clip(RoundedCornerShape(28.dp))
-                .background(SurfaceCard.copy(alpha = 0.55f))
-                .border(1.dp, if (isFocusModeActive) androidx.compose.ui.graphics.SolidColor(activeColor.copy(alpha = glowAlpha)) else GlassBorderBrush, RoundedCornerShape(28.dp))
-                .padding(top = 28.dp, bottom = 20.dp),
+                .padding(vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Progress Ring
-                Box(
-                    modifier = Modifier
-                        .size(240.dp)
-                        .drawBehind {
-                            val strokeWidth = 14.dp.toPx()
-                            // Background track
-                            drawArc(
-                                color = Color.White.copy(alpha = 0.12f),
-                                startAngle = 140f,
-                                sweepAngle = 260f,
-                                useCenter = false,
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            // Wavy Watery Background
+            Box(
+                modifier = Modifier
+                    .size(340.dp)
+                    .drawBehind {
+                        blobPath.reset()
+                        val w = size.width
+                        val h = size.height
+                        val radius = size.minDimension / 2f * 0.90f
+                        val center = Offset(w / 2f, h / 2f)
+                        
+                        for (i in 0..360 step 2) {
+                            val rad = Math.toRadians(i.toDouble()).toFloat()
+                            // Organic irregularity using sum of sines to simulate a watery blob
+                            val r = radius + 
+                                    radius * 0.06f * kotlin.math.sin(rad * 4f) + 
+                                    radius * 0.04f * kotlin.math.cos(rad * 3f) +
+                                    radius * 0.03f * kotlin.math.sin(rad * 7f)
+                                    
+                            val x = center.x + r * kotlin.math.cos(rad)
+                            val y = center.y + r * kotlin.math.sin(rad)
+                            
+                            if (i == 0) blobPath.moveTo(x, y)
+                            else blobPath.lineTo(x, y)
+                        }
+                        blobPath.close()
+
+                        // Semi-transparent glassy dark fill
+                        drawPath(
+                            path = blobPath,
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.12f),
+                                    Color(0xFF0F151A).copy(alpha = 0.6f)
+                                ),
+                                center = Offset(w * 0.3f, h * 0.3f),
+                                radius = w * 0.8f
                             )
-                            // Animated foreground — tinted per mode
-                            val sweepAngle = animatedProgress * 260f
+                        )
+                        
+                        // Thin glassy highlight border
+                        drawPath(
+                            path = blobPath,
+                            color = Color.White.copy(alpha = 0.35f),
+                            style = Stroke(width = 1.dp.toPx())
+                        )
+                    }
+            )
+
+            // Original Progress Ring
+            Box(
+                modifier = Modifier
+                    .size(260.dp)
+                    .drawBehind {
+                        val strokeWidth = 16.dp.toPx()
+                        val glowStroke = 30.dp.toPx()
+
+                        // Outer glow layer (semi-transparent, wider stroke)
+                        if (animatedProgress > 0f) {
                             drawArc(
-                                color = activeColor,
+                                color = activeColor.copy(alpha = 0.12f),
                                 startAngle = 140f,
-                                sweepAngle = sweepAngle,
+                                sweepAngle = animatedProgress * 260f,
                                 useCenter = false,
-                                style = Stroke(
-                                    width = strokeWidth,
-                                    cap = StrokeCap.Round
+                                style = Stroke(width = glowStroke, cap = StrokeCap.Round)
+                            )
+                        }
+
+                        // Background track
+                        drawArc(
+                            color = Color.White.copy(alpha = 0.35f),
+                            startAngle = 140f,
+                            sweepAngle = 260f,
+                            useCenter = false,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                        )
+
+                        
+                        // Progress arc
+                        if (animatedProgress > 0f) {
+                            withTransform({
+                                rotate(140f, Offset(size.width / 2f, size.height / 2f))
+                            }) {
+                                drawArc(
+                                    brush = Brush.sweepGradient(
+                                        0.0f to activeColor.copy(alpha = 0.05f),
+                                        (animatedProgress * (260f/360f)) to activeColor,
+                                        center = Offset(size.width / 2f, size.height / 2f)
+                                    ),
+                                    startAngle = 0f,
+                                    sweepAngle = animatedProgress * 260f,
+                                    useCenter = false,
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                                 )
+                            }
+                        }
+
+
+                        // Bright tip dot at the end of the arc
+                        if (animatedProgress > 0.02f) {
+                            val angle = Math.toRadians((140.0 + animatedProgress * 260.0))
+                            val radius = (size.minDimension / 2f)
+                            val dotX = center.x + radius * kotlin.math.cos(angle).toFloat()
+                            val dotY = center.y + radius * kotlin.math.sin(angle).toFloat()
+                            drawCircle(
+                                color = Color.White.copy(alpha = 0.9f),
+                                radius = strokeWidth * 0.35f,
+                                center = Offset(dotX, dotY)
                             )
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = topLabel,
-                            color = activeColor,
-                            fontFamily = AppFontFamily,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Top Icon Glass Box
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.1f))
+                            .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SmartDisplay,
+                            contentDescription = null,
+                            tint = activeColor,
+                            modifier = Modifier.size(24.dp)
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Status label
+                    Text(
+                        text = topLabel,
+                        color = activeColor,
+                        style = androidx.compose.ui.text.TextStyle(
+                            shadow = androidx.compose.ui.graphics.Shadow(
+                                color = activeColor,
+                                blurRadius = 24f
+                            )
+                        ),
+                        fontFamily = AppFontFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // Main value
+                    Text(
+                        text = heroCenterText,
+                        color = TextPrimary,
+                        fontFamily = AppFontFamily,
+                        fontSize = heroFontSize,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-1.5).sp,
+                        maxLines = 1
+                    )
+                    // "reels" sub-label for normal state
+                    if (!isFocusModeActive && !isBreakActive) {
                         Text(
-                            text = remainingLabel,
-                            color = TextPrimary,
-                            fontFamily = AppFontFamily,
-                            fontSize = 48.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-1).sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = nextLabel,
-                            color = TextSecondary,
+                            text = "reels",
+                            color = TextPrimary.copy(alpha = 0.85f),
                             fontFamily = AppFontFamily,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium
                         )
-                        Spacer(modifier = Modifier.height(20.dp))
-                        // Mode Badge Pill
-                        val (pillBgColor, pillBorderColor, pillText) = when (blockingMode) {
-                            BlockingMode.EASY -> Triple(
-                                Color(0xFF064E3B),
-                                StatusGreen.copy(alpha = 0.3f),
-                                "Easy Mode"
-                            )
-                            BlockingMode.STRICT -> Triple(
-                                ModeStrictAccent.copy(alpha = 0.12f),
-                                ModeStrictAccent.copy(alpha = 0.3f),
-                                "Discipline Mode"
-                            )
-                            BlockingMode.HARDCORE -> Triple(
-                                ModeHardcoreAccent.copy(alpha = 0.12f),
-                                ModeHardcoreAccent.copy(alpha = 0.3f),
-                                "Hardcore Mode"
-                            )
-                        }
-                        val pillIconTint = when (blockingMode) {
-                            BlockingMode.EASY -> StatusGreen
-                            BlockingMode.STRICT -> ModeStrictAccent
-                            BlockingMode.HARDCORE -> ModeHardcoreAccent
-                        }
-                        val pillIcon = when (blockingMode) {
-                            BlockingMode.EASY -> Icons.Default.Timer
-                            BlockingMode.STRICT -> Icons.Default.Shield
-                            BlockingMode.HARDCORE -> Icons.Default.Lock
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(pillBgColor)
-                                .border(1.dp, pillBorderColor, RoundedCornerShape(20.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = pillIcon,
-                                    contentDescription = null,
-                                    tint = pillIconTint,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = pillText,
-                                    color = pillIconTint,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
                     }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // ── Reels Scrolled / Prompt Section ──
-                if (settings.showReelCount) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                                        // Motivational status pill
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White.copy(alpha = 0.06f))
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
-                            .clickable { onNavigateToStats() }
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SmartDisplay,
-                                contentDescription = null,
-                                tint = if (metrics.totalReelsToday > 0) Amber500 else TextSecondary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Reels Scrolled: ",
-                                color = TextSecondary,
-                                fontSize = 12.sp,
-                                fontFamily = AppFontFamily,
-                                fontWeight = FontWeight.Normal
-                            )
-                            Text(
-                                text = metrics.totalReelsToday.toString(),
-                                color = if (metrics.totalReelsToday > 0) Amber500 else TextPrimary,
-                                fontSize = 12.sp,
-                                fontFamily = AppFontFamily,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Amber500.copy(alpha = 0.10f))
-                            .border(1.dp, Amber500.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
-                            .clickable { showReelCountExplainerDialog = true }
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.VisibilityOff,
-                                contentDescription = null,
-                                tint = Amber500,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Reel count is off",
-                                color = TextSecondary,
-                                fontSize = 11.5.sp,
-                                fontFamily = AppFontFamily
-                            )
-                            Text(
-                                text = " • Turn on",
-                                color = Amber500,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = AppFontFamily
-                            )
-                        }
+                        Text(
+                            text = statusMessage,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontFamily = AppFontFamily,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        when (blockingMode) {
-            BlockingMode.EASY -> {
-                val easyWait = settings.easyModeWaitSeconds
-                BreakButton(
-                    text = "Take a Break",
-                    subtext = if (metrics.remainingMillis > 0L) "You still have time, enjoy it" else "${easyWait}s wait required",
-                    accentColor = modeAccent,
-                    enabled = metrics.remainingMillis <= 0L,
-                    onClick = {
-                        val intent = android.content.Intent(context, com.flow.shift.feature.exerciseblocker.WaitActivity::class.java).apply {
-                            putExtra("TARGET_PACKAGE", "ALL_APPS")
-                            putExtra("WAIT_SECONDS", easyWait)
-                            putExtra("BREAK_DURATION_MINUTES", breakDurationMinutes)
-                        }
-                        context.startActivity(intent)
+        // ── Reels Scrolled Pill (optional) ──
+        if (settings.showReelCount) {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.White.copy(alpha = 0.25f))
+                        .border(1.dp, Color.White.copy(alpha = 0.40f), RoundedCornerShape(20.dp))
+                        .clickable { onNavigateToStats() }
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SmartDisplay,
+                            contentDescription = null,
+                            tint = if (metrics.totalReelsToday > 0) Amber500 else TextSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Reels Scrolled: ",
+                            color = TextSecondary,
+                            fontSize = 12.sp,
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.Normal
+                        )
+                        Text(
+                            text = metrics.totalReelsToday.toString(),
+                            color = if (metrics.totalReelsToday > 0) Amber500 else TextPrimary,
+                            fontSize = 12.sp,
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                )
+                }
             }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+
+        // ═══════════════════════════════════════════
+        // ── 4. BREAK BUTTON ──
+        // ═══════════════════════════════════════════
+        when (blockingMode) {
             BlockingMode.STRICT -> {
                 BreakButton(
                     text = "Take a Break",
-                    subtext = if (metrics.remainingMillis > 0L) {
-                        "You still have time, enjoy it"
+                    subtext = if (!isTargetReached) {
+                        "You still have reels left, enjoy them"
                     } else {
                         when (challengeType) {
                             "CHARGE_PHONE" -> "Charge phone ($challengeAmount min)"
@@ -513,9 +512,13 @@ private fun DashboardContent(
                         }
                     },
                     accentColor = modeAccent,
-                    enabled = metrics.remainingMillis <= 0L,
+                    enabled = isTargetReached,
+                    reelsProgress = reelProgress,
                     onClick = {
-                        val intent = android.content.Intent(context, com.flow.shift.feature.exerciseblocker.BlockerActivity::class.java).apply {
+                        val intent = android.content.Intent(
+                            context,
+                            com.flow.shift.feature.exerciseblocker.BlockerActivity::class.java
+                        ).apply {
                             putExtra("TARGET_PACKAGE", "ALL_APPS")
                             putExtra("REQUIRED_REPS", challengeAmount)
                             putExtra("BREAK_DURATION_MINUTES", breakDurationMinutes)
@@ -536,6 +539,46 @@ private fun DashboardContent(
             }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ═══════════════════════════════════════════
+        // ── 5. MODE CONFIGURATION CARD ──
+        // ═══════════════════════════════════════════
+        when (blockingMode) {
+            BlockingMode.STRICT -> {
+                val (title, icon) = when (challengeType) {
+                    "MATH" -> "$challengeAmount Maths" to Icons.Default.Psychology
+                    "ADVANCED_MATH" -> "$challengeAmount Adv Maths" to Icons.Default.Psychology
+                    "SQUATS" -> "$challengeAmount Squats" to Icons.Default.FitnessCenter
+                    "CHARGE_PHONE" -> "$challengeAmount min Charge" to Icons.Default.BatteryChargingFull
+                    else -> "$challengeAmount Push-ups" to Icons.Default.FitnessCenter
+                }
+                NextChallengeCard(
+                    icon = icon,
+                    iconTint = modeAccent,
+                    label = "CURRENT CHALLENGE",
+                    title = title,
+                    subtitle = "Complete to unlock a ${breakDurationMinutes}min break",
+                    accentColor = modeAccent,
+                    onClick = onNavigateToModes
+                )
+            }
+            BlockingMode.HARDCORE -> {
+                NextChallengeCard(
+                    icon = Icons.Default.Lock,
+                    iconTint = modeAccent,
+                    label = "CONFIGURE HARDCORE MODE",
+                    title = "No Breaks",
+                    subtitle = "Stay focused. No breaks allowed.",
+                    accentColor = modeAccent,
+                    onClick = onNavigateToModes
+                )
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // ── 6. FOCUS MODE SECTION ──
+        // ═══════════════════════════════════════════
         if (blockingMode != BlockingMode.HARDCORE) {
             Spacer(modifier = Modifier.height(16.dp))
             if (isFocusModeActive) {
@@ -550,88 +593,57 @@ private fun DashboardContent(
             } else {
                 FocusModeSliderButton(
                     accentColor = modeAccent,
-                    enabled = metrics.remainingMillis > 0L,
+                    enabled = !isTargetReached,
                     onStartFocusMode = { minutes -> onStartFocusMode(minutes) }
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // ── Next Challenge Card — Mode Specific ──
-        when (blockingMode) {
-            BlockingMode.EASY -> {
-                val easyWait = settings.easyModeWaitSeconds
-                NextChallengeCard(
-                    icon = Icons.Default.Timer,
-                    iconBg = modeAccent.copy(alpha = 0.3f),
-                    iconTint = modeAccent,
-                    label = "CONFIGURE EASY MODE",
-                    title = "${easyWait}s Wait",
-                    subtitle = "Wait $easyWait seconds before your break",
-                    accentColor = modeAccent,
-                    onClick = onNavigateToEasyModeSettings
-                )
-            }
-            BlockingMode.STRICT -> {
-                val (title, icon) = when (challengeType) {
-                    "MATH" -> "$challengeAmount Maths" to Icons.Default.Psychology
-                    "ADVANCED_MATH" -> "$challengeAmount Adv Maths" to Icons.Default.Psychology
-                    "SQUATS" -> "$challengeAmount Squats" to Icons.Default.FitnessCenter
-                    "CHARGE_PHONE" -> "$challengeAmount min Charge" to Icons.Default.BatteryChargingFull
-                    else -> "$challengeAmount Push-ups" to Icons.Default.FitnessCenter
-                }
-                NextChallengeCard(
-                    icon = icon,
-                    iconBg = modeAccent.copy(alpha = 0.3f),
-                    iconTint = modeAccent,
-                    label = "CONFIGURE DISCIPLINE MODE",
-                    title = title,
-                    subtitle = "Complete to unlock a ${breakDurationMinutes}min break",
-                    accentColor = modeAccent,
-                    onClick = onNavigateToDisciplineModeSettings
-                )
-            }
-            BlockingMode.HARDCORE -> {
-                NextChallengeCard(
-                    icon = Icons.Default.Lock,
-                    iconBg = modeAccent.copy(alpha = 0.3f),
-                    iconTint = modeAccent,
-                    label = "CONFIGURE HARDCORE MODE",
-                    title = "No Breaks",
-                    subtitle = "Stay focused. No breaks allowed.",
-                    accentColor = modeAccent,
-                    onClick = onNavigateToHardcoreModeSettings
-                )
-            }
-        }
+        // ═══════════════════════════════════════════
+        // ── 7. TODAY'S ACTIVITY CARD ──
+        // ═══════════════════════════════════════════
+        TodaysActivityCard(
+            totalUsageMillis = metrics.totalUsageTodayMillis,
+            interventionsToday = metrics.interventionsToday,
+            sessionsToday = metrics.sessionsToday,
+            accentColor = modeAccent,
+            onClick = onNavigateToStats
+        )
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // ── Protected Apps Section ──
+        // ═══════════════════════════════════════════
+        // ── 8. PROTECTED APPS SECTION ──
+        // ═══════════════════════════════════════════
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(SurfaceCard.copy(alpha = 0.55f))
-                .border(1.dp, GlassBorderBrush, RoundedCornerShape(24.dp))
-                .padding(20.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(SurfaceCard.copy(alpha = 0.30f))
+                .border(1.dp, GlassBorderBrush, RoundedCornerShape(18.dp))
+                .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 18.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Protected Apps",
-                    color = TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Protected Apps",
+                        color = TextPrimary,
+                        fontFamily = AppFontFamily,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 Text(
                     text = "Add More",
                     color = modeAccent,
-                    fontSize = 13.sp,
+                    fontFamily = AppFontFamily,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -640,20 +652,48 @@ private fun DashboardContent(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(metrics.protectedApps, key = { it.packageName }) { app ->
-                    ProtectedAppIcon(name = app.appName, packageName = app.packageName)
+            if (metrics.protectedApps.isEmpty()) {
+                // Empty state
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "No apps protected yet",
+                            color = TextMuted,
+                            fontFamily = AppFontFamily,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Tap \"Add More\" to get started",
+                            color = TextMuted.copy(alpha = 0.6f),
+                            fontFamily = AppFontFamily,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            } else {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(metrics.protectedApps, key = { it.packageName }) { app ->
+                        ProtectedAppIcon(name = app.appName, packageName = app.packageName)
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(28.dp))
     }
 
+    // ── Bottom Sheets & Dialogs ──
     if (showAddMoreBottomSheet) {
         com.flow.shift.feature.appselection.AppSelectionBottomSheet(
             onDismissRequest = { showAddMoreBottomSheet = false }
@@ -668,6 +708,7 @@ private fun DashboardContent(
                 Text(
                     text = "Stop Focus Mode?",
                     color = TextPrimary,
+                    fontFamily = AppFontFamily,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -676,13 +717,14 @@ private fun DashboardContent(
                 Text(
                     text = "Are you sure you want to stop Focus Mode?",
                     color = TextSecondary,
+                    fontFamily = AppFontFamily,
                     fontSize = 14.sp
                 )
             },
             confirmButton = {
                 TextButton(
-                    onClick = { 
-                        onStopFocusMode() 
+                    onClick = {
+                        onStopFocusMode()
                         showStopFocusModeDialog = false
                     }
                 ) {
@@ -696,67 +738,178 @@ private fun DashboardContent(
             }
         )
     }
+}
 
-    if (showReelCountExplainerDialog) {
-        ReelCountExplainerDialog(
-            isPremium = settings.isPremium,
-            onDismiss = { showReelCountExplainerDialog = false },
-            onEnableClick = {
-                if (settings.isPremium) {
-                    onEnableReelCount()
-                    showReelCountExplainerDialog = false
-                } else {
-                    android.widget.Toast.makeText(context, "Available for Premium users only", android.widget.Toast.LENGTH_SHORT).show()
-                    onNavigateToSubscription()
-                    showReelCountExplainerDialog = false
-                }
+
+
+// ═══════════════════════════════════════════════════════
+// ── COMPOSABLE: Today's Activity Card ──
+// ═══════════════════════════════════════════════════════
+
+@Composable
+private fun TodaysActivityCard(
+    totalUsageMillis: Long,
+    interventionsToday: Int,
+    sessionsToday: Int,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(SurfaceCard.copy(alpha = 0.30f))
+            .border(1.dp, GlassBorderBrush, RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Today's Activity",
+                color = TextPrimary,
+                fontFamily = AppFontFamily,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Details",
+                    color = TextMuted,
+                    fontFamily = AppFontFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(16.dp)
+                )
             }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            MiniStat(
+                label = "Screen Time",
+                value = formatDurationShort(totalUsageMillis),
+                accentColor = accentColor
+            )
+            // Vertical divider
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(36.dp)
+                    .background(Color.White.copy(alpha = 0.08f))
+            )
+            MiniStat(
+                label = "Blocks",
+                value = interventionsToday.toString(),
+                accentColor = StatusRed
+            )
+            // Vertical divider
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(36.dp)
+                    .background(Color.White.copy(alpha = 0.08f))
+            )
+            MiniStat(
+                label = "Breaks",
+                value = sessionsToday.toString(),
+                accentColor = StatusGreen
+            )
+        }
+    }
+}
+
+@Composable
+private fun MiniStat(
+    label: String,
+    value: String,
+    accentColor: Color
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            color = accentColor,
+            fontFamily = AppFontFamily,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = label,
+            color = TextMuted,
+            fontFamily = AppFontFamily,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
 
-// ── Next Challenge Card ──
+// ═══════════════════════════════════════════════════════
+// ── COMPOSABLE: Next Challenge Card ──
+// ═══════════════════════════════════════════════════════
+
 @Composable
 private fun NextChallengeCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconBg: Color,
+    icon: ImageVector,
     iconTint: Color,
     label: String,
     title: String,
     subtitle: String,
     accentColor: Color,
-    onClick: () -> Unit
+    onClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceCardLight.copy(alpha = 0.55f))
-            .border(1.dp, GlassBorderBrush, RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
-            .padding(16.dp),
+            .clip(RoundedCornerShape(18.dp))
+            .background(SurfaceCard.copy(alpha = 0.30f))
+            .border(1.dp, GlassBorderBrush, RoundedCornerShape(18.dp))
+            .drawBehind {
+                // Left accent stripe
+                drawRoundRect(
+                    color = accentColor,
+                    topLeft = Offset(0f, size.height * 0.15f),
+                    size = Size(4.dp.toPx(), size.height * 0.7f),
+                    cornerRadius = CornerRadius(2.dp.toPx())
+                )
+            }
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(iconBg),
+                .size(48.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(accentColor.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = iconTint,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,
-                color = accentColor,
-                fontSize = 11.sp,
+                color = accentColor.copy(alpha = 0.8f),
+                fontFamily = AppFontFamily,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp
             )
@@ -764,24 +917,29 @@ private fun NextChallengeCard(
             Text(
                 text = title,
                 color = TextPrimary,
+                fontFamily = AppFontFamily,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = subtitle,
                 color = TextSecondary,
+                fontFamily = AppFontFamily,
                 fontSize = 13.sp
             )
         }
         Icon(
-            imageVector = Icons.Default.KeyboardArrowRight,
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = TextSecondary
+            tint = TextMuted
         )
     }
 }
 
-// ── Break Button ──
+// ═══════════════════════════════════════════════════════
+// ── COMPOSABLE: Break Button ──
+// ═══════════════════════════════════════════════════════
+
 @Composable
 private fun BreakButton(
     text: String,
@@ -789,29 +947,56 @@ private fun BreakButton(
     accentColor: Color,
     enabled: Boolean,
     disabledTint: Color? = null,
+    reelsProgress: Float = 0f,
     onClick: () -> Unit
 ) {
     val darkTextColor = Color(0xFF111318)
     val shape = RoundedCornerShape(22.dp)
-    
+
     val modifier = if (enabled) {
         Modifier
             .fillMaxWidth()
             .shadow(
                 elevation = 12.dp,
                 shape = shape,
-                ambientColor = accentColor.copy(alpha = 0.5f),
-                spotColor = accentColor
+                ambientColor = accentColor.copy(alpha = 0.4f),
+                spotColor = accentColor.copy(alpha = 0.8f)
             )
             .clip(shape)
-            .background(accentColor)
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        accentColor,
+                        accentColor.copy(alpha = 0.85f)
+                    )
+                )
+            )
             .clickable { onClick() }
     } else {
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(disabledTint?.copy(alpha = 0.15f) ?: SurfaceCardLight.copy(alpha = 0.4f))
-            .border(1.dp, disabledTint?.copy(alpha = 0.3f) ?: TextMuted.copy(alpha = 0.2f), shape)
+            .background(disabledTint?.copy(alpha = 0.12f) ?: Color.White.copy(alpha = 0.04f))
+            .border(
+                1.dp,
+                disabledTint?.let { SolidColor(it.copy(alpha = 0.25f)) } ?: GlassBorderBrush,
+                shape
+            )
+            .then(
+                // Progress bar along bottom for disabled state
+                if (!enabled && reelsProgress > 0f && disabledTint == null) {
+                    Modifier.drawBehind {
+                        val barHeight = 3.dp.toPx()
+                        val barWidth = size.width * reelsProgress
+                        drawRoundRect(
+                            color = accentColor.copy(alpha = 0.3f),
+                            topLeft = Offset(0f, size.height - barHeight),
+                            size = Size(barWidth, barHeight),
+                            cornerRadius = CornerRadius(barHeight / 2)
+                        )
+                    }
+                } else Modifier
+            )
     }
 
     Row(
@@ -829,22 +1014,26 @@ private fun BreakButton(
                     .clip(CircleShape)
                     .background(
                         if (enabled) Color.Black.copy(alpha = 0.15f)
-                        else (disabledTint?.copy(alpha = 0.15f) ?: Color.White.copy(alpha = 0.05f))
+                        else (disabledTint?.copy(alpha = 0.12f) ?: Color.White.copy(alpha = 0.05f))
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (enabled) Icons.Default.LocalCafe else Icons.Default.Block,
+                    imageVector = if (enabled) Icons.Default.LocalCafe
+                    else (if (disabledTint != null) Icons.Default.Block else Icons.Default.LocalCafe),
                     contentDescription = null,
-                    tint = if (enabled) darkTextColor else (disabledTint?.copy(alpha = 0.8f) ?: TextMuted),
-                    modifier = Modifier.size(24.dp)
+                    tint = if (enabled) darkTextColor
+                    else (disabledTint?.copy(alpha = 0.7f) ?: TextMuted),
+                    modifier = Modifier.size(22.dp)
                 )
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column {
                 Text(
                     text = text,
-                    color = if (enabled) darkTextColor else (disabledTint?.copy(alpha = 0.9f) ?: TextMuted),
+                    color = if (enabled) darkTextColor
+                    else (disabledTint?.copy(alpha = 0.9f) ?: TextMuted),
+                    fontFamily = AppFontFamily,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -852,7 +1041,9 @@ private fun BreakButton(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = subtext,
-                        color = if (enabled) darkTextColor.copy(alpha = 0.8f) else (disabledTint?.copy(alpha = 0.6f) ?: TextMuted.copy(alpha = 0.6f)),
+                        color = if (enabled) darkTextColor.copy(alpha = 0.75f)
+                        else (disabledTint?.copy(alpha = 0.5f) ?: TextMuted.copy(alpha = 0.6f)),
+                        fontFamily = AppFontFamily,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -869,7 +1060,7 @@ private fun BreakButton(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.ArrowForward,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = "Start",
                     tint = accentColor,
                     modifier = Modifier.size(20.dp)
@@ -879,46 +1070,45 @@ private fun BreakButton(
     }
 }
 
+// ═══════════════════════════════════════════════════════
+// ── COMPOSABLE: Protected App Icon (Circular) ──
+// ═══════════════════════════════════════════════════════
+
 @Composable
 private fun ProtectedAppIcon(
     name: String,
     packageName: String
 ) {
     val iconBitmap = rememberAppIconBitmap(packageName)
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (iconBitmap == null) colorForPackage(packageName) else Color.Transparent),
-            contentAlignment = Alignment.Center
-        ) {
-            if (iconBitmap != null) {
-                androidx.compose.foundation.Image(
-                    bitmap = iconBitmap,
-                    contentDescription = name,
-                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))
-                )
-            } else {
-                Text(
-                    text = name.firstOrNull()?.uppercase() ?: "?",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+    Box(
+        modifier = Modifier
+            .size(46.dp)
+            .clip(CircleShape)
+            .background(if (iconBitmap == null) colorForPackage(packageName) else Color.Transparent)
+            .border(1.5.dp, Color.White.copy(alpha = 0.10f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (iconBitmap != null) {
+            Image(
+                bitmap = iconBitmap,
+                contentDescription = name,
+                modifier = Modifier.fillMaxSize().clip(CircleShape)
+            )
+        } else {
+            Text(
+                text = name.firstOrNull()?.uppercase() ?: "?",
+                color = Color.White,
+                fontFamily = AppFontFamily,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = name,
-            color = TextSecondary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
     }
 }
 
+// ═══════════════════════════════════════════════════════
 // ── Custom App Icons Drawn with Canvas ──
+// ═══════════════════════════════════════════════════════
 
 @Composable
 fun ReelsIcon(modifier: Modifier = Modifier) {
@@ -926,7 +1116,7 @@ fun ReelsIcon(modifier: Modifier = Modifier) {
         val w = size.width
         val h = size.height
         val strokeWidth = 2.dp.toPx()
-        
+
         drawRoundRect(
             color = Color.White,
             topLeft = Offset(w * 0.18f, h * 0.22f),
@@ -934,18 +1124,18 @@ fun ReelsIcon(modifier: Modifier = Modifier) {
             cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx()),
             style = Stroke(width = strokeWidth)
         )
-        
+
         drawLine(
             color = Color.White,
             start = Offset(w * 0.18f, h * 0.38f),
             end = Offset(w * 0.82f, h * 0.38f),
             strokeWidth = strokeWidth
         )
-        
+
         drawLine(color = Color.White, start = Offset(w * 0.28f, h * 0.22f), end = Offset(w * 0.38f, h * 0.38f), strokeWidth = strokeWidth)
         drawLine(color = Color.White, start = Offset(w * 0.48f, h * 0.22f), end = Offset(w * 0.58f, h * 0.38f), strokeWidth = strokeWidth)
         drawLine(color = Color.White, start = Offset(w * 0.68f, h * 0.22f), end = Offset(w * 0.78f, h * 0.38f), strokeWidth = strokeWidth)
-        
+
         val playPath = Path().apply {
             moveTo(w * 0.44f, h * 0.45f)
             lineTo(w * 0.62f, h * 0.55f)
@@ -961,7 +1151,7 @@ fun ShortsIcon(modifier: Modifier = Modifier) {
     androidx.compose.foundation.Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        
+
         val shapePath = Path().apply {
             moveTo(w * 0.35f, h * 0.25f)
             cubicTo(w * 0.5f, h * 0.15f, w * 0.75f, h * 0.25f, w * 0.7f, h * 0.45f)
@@ -970,7 +1160,7 @@ fun ShortsIcon(modifier: Modifier = Modifier) {
             close()
         }
         drawPath(path = shapePath, color = Color.White)
-        
+
         val playPath = Path().apply {
             moveTo(w * 0.46f, h * 0.42f)
             lineTo(w * 0.61f, h * 0.50f)
@@ -986,15 +1176,11 @@ fun RedditIcon(modifier: Modifier = Modifier) {
     androidx.compose.foundation.Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        // Simple alien head representation
         drawCircle(color = Color.White, radius = w * 0.25f, center = Offset(w * 0.5f, h * 0.55f))
-        // Antenna
         drawLine(color = Color.White, start = Offset(w * 0.5f, h * 0.3f), end = Offset(w * 0.6f, h * 0.15f), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
         drawCircle(color = Color.White, radius = w * 0.05f, center = Offset(w * 0.6f, h * 0.15f))
-        // Ears
         drawCircle(color = Color.White, radius = w * 0.08f, center = Offset(w * 0.25f, h * 0.45f))
         drawCircle(color = Color.White, radius = w * 0.08f, center = Offset(w * 0.75f, h * 0.45f))
-        // Eyes (orange)
         drawCircle(color = Color(0xFFFF4500), radius = w * 0.05f, center = Offset(w * 0.4f, h * 0.5f))
         drawCircle(color = Color(0xFFFF4500), radius = w * 0.05f, center = Offset(w * 0.6f, h * 0.5f))
     }
@@ -1015,7 +1201,6 @@ fun FacebookIcon(modifier: Modifier = Modifier) {
     androidx.compose.foundation.Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        // 'f' character
         val fPath = Path().apply {
             moveTo(w * 0.6f, h * 0.8f)
             lineTo(w * 0.6f, h * 0.5f)
@@ -1044,7 +1229,6 @@ fun InstagramGradientIcon(modifier: Modifier = Modifier) {
         val h = size.height
         val strokeWidth = 2.dp.toPx()
 
-        // Outer rounded rectangle
         drawRoundRect(
             color = Color.White,
             topLeft = Offset(w * 0.15f, h * 0.15f),
@@ -1053,7 +1237,6 @@ fun InstagramGradientIcon(modifier: Modifier = Modifier) {
             style = Stroke(width = strokeWidth)
         )
 
-        // Inner circle (lens)
         drawCircle(
             color = Color.White,
             radius = w * 0.18f,
@@ -1061,7 +1244,6 @@ fun InstagramGradientIcon(modifier: Modifier = Modifier) {
             style = Stroke(width = strokeWidth)
         )
 
-        // Small dot (flash)
         drawCircle(
             color = Color.White,
             radius = w * 0.05f,
@@ -1086,7 +1268,7 @@ private fun AppInitialIcon(
         contentAlignment = Alignment.Center
     ) {
         if (iconBitmap != null) {
-            androidx.compose.foundation.Image(
+            Image(
                 bitmap = iconBitmap,
                 contentDescription = name,
                 modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp))
@@ -1102,7 +1284,6 @@ private fun AppInitialIcon(
     }
 }
 
-
 private fun colorForPackage(packageName: String): Color {
     val palette = listOf(
         Color(0xFFE1306C),
@@ -1116,4 +1297,3 @@ private fun colorForPackage(packageName: String): Color {
     val index = kotlin.math.abs(packageName.hashCode()) % palette.size
     return palette[index]
 }
-

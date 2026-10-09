@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +27,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PageSize
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -38,21 +45,38 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.absoluteValue
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -62,7 +86,6 @@ import com.flow.shift.core.designsystem.AppIcon
 import com.flow.shift.R
 import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.theme.*
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -99,7 +122,7 @@ private fun OnboardingBackground() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  ONBOARDING SCREEN — 7-Step Guided Setup
+//  ONBOARDING SCREEN — 6-Step Guided Setup
 // ════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -108,28 +131,20 @@ fun OnboardingScreen(
     onFinish: () -> Unit
 ) {
     val currentStep by viewModel.currentStep.collectAsStateWithLifecycle()
-    val selectedScreenTime by viewModel.selectedScreenTime.collectAsStateWithLifecycle()
-    val selectedTargetScreenTime by viewModel.selectedTargetScreenTime.collectAsStateWithLifecycle()
+    val selectedDailyLimit by viewModel.selectedDailyLimit.collectAsStateWithLifecycle()
+    val isCustomLimit by viewModel.isCustomLimit.collectAsStateWithLifecycle()
+    val customLimitText by viewModel.customLimitText.collectAsStateWithLifecycle()
     val selectedMode by viewModel.selectedMode.collectAsStateWithLifecycle()
-    val selectedChallengeType by viewModel.selectedChallengeType.collectAsStateWithLifecycle()
-    val challengeAmount by viewModel.challengeAmount.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
-    var hasUsagePermission by remember { mutableStateOf(hasUsageStatsPermission(context)) }
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var hasAccessibilityPermission by remember { mutableStateOf(hasAccessibilityPermission(context)) }
-    var hasCameraPermission by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    val manufacturer = remember { Build.MANUFACTURER.lowercase() }
+    val brand = remember { Build.BRAND.lowercase() }
+    val needsAutostartGuidance = remember {
+        manufacturer in listOf("xiaomi", "redmi", "poco", "vivo", "iqoo") ||
+        brand in listOf("xiaomi", "redmi", "poco", "vivo", "iqoo")
     }
-    
-    // OEM specific permissions
-    val manufacturer = Build.MANUFACTURER.lowercase()
-    val isChineseOEM = manufacturer in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
-    // Only these OEMs still expose Auto-start as a useful reliability setting.
-    // Other manufacturers either do not provide it or do not need it for FlowShift.
-    val needsAutostartGuidance = manufacturer in listOf("xiaomi", "redmi", "poco", "vivo", "iqoo")
-    val showBatteryOptimization = manufacturer != "realme"
-    val isSamsung = manufacturer == "samsung"
     val autostartCheckSupported = remember { canCheckAutostart(context) }
     var userInteractedAutostart by remember { mutableStateOf(false) }
     var hasAutostartPermission by remember {
@@ -139,26 +154,21 @@ fun OnboardingScreen(
             else false
         )
     }
-    var hasBackgroundWindowsPermission by remember { mutableStateOf(hasBackgroundWindowPermission(context)) }
-    var hasBatteryOptimizationExemption by remember { mutableStateOf(isBatteryOptimizationExempt(context)) }
-    var hasSamsungBatteryPermission by remember { mutableStateOf(!isSamsung) } // Manual "I did it" for Samsung
 
     val coroutineScope = rememberCoroutineScope()
 
-    val refreshPermissions = remember(context, autostartCheckSupported) {
+    val refreshPermissions = remember(context, autostartCheckSupported, needsAutostartGuidance) {
         {
-            hasUsagePermission = hasUsageStatsPermission(context)
             hasOverlayPermission = Settings.canDrawOverlays(context)
             hasAccessibilityPermission = hasAccessibilityPermission(context)
-            hasCameraPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-            hasBackgroundWindowsPermission = hasBackgroundWindowPermission(context)
-            hasBatteryOptimizationExemption = isBatteryOptimizationExempt(context)
             if (needsAutostartGuidance) {
                 if (autostartCheckSupported) {
                     hasAutostartPermission = hasAutostartPermission(context)
                 } else if (userInteractedAutostart) {
                     hasAutostartPermission = true
                 }
+            } else {
+                hasAutostartPermission = true
             }
         }
     }
@@ -175,10 +185,10 @@ fun OnboardingScreen(
         }
     }
 
-    // Active polling while on the Permissions step (Step 5)
+    // Active polling while on the Permissions step (Step 3)
     // Ensures immediate detection even with delayed OS sync or without full activity pause/resume
     LaunchedEffect(currentStep) {
-        if (currentStep == 5) {
+        if (currentStep == 3) {
             while (isActive) {
                 refreshPermissions()
                 delay(500)
@@ -189,12 +199,10 @@ fun OnboardingScreen(
     // Can proceed to next step?
     val canProceed = when (currentStep) {
         0 -> true // Welcome — always
-        1 -> true // Screen time — slider always valid
-        2 -> true // Target screen time — slider always valid
-        3 -> true // Mode — always has a default (EASY)
-        4 -> true // Apps — optional, can skip
-        5 -> hasUsagePermission && hasOverlayPermission && hasAccessibilityPermission && hasAutostartPermission && hasBackgroundWindowsPermission && (!showBatteryOptimization || hasBatteryOptimizationExemption) && hasSamsungBatteryPermission
-        6 -> true // All set — always
+        1 -> selectedDailyLimit > 0 // Daily limit must be positive
+        2 -> true // Apps — optional, can skip
+        3 -> hasAccessibilityPermission && hasOverlayPermission && hasAutostartPermission
+        4 -> true // All set — always
         else -> false
     }
 
@@ -207,20 +215,20 @@ fun OnboardingScreen(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
                 AnimatedVisibility(
-                    visible = currentStep > 0 && currentStep < 6,
+                    visible = currentStep in 1..3,
                     enter = fadeIn(tween(400)),
                     exit = fadeOut(tween(400))
                 ) {
                     OnboardingTopBar(
                         currentStep = currentStep,
-                        totalSteps = 5,
+                        totalSteps = 3,
                         onBackClick = { viewModel.previousStep() }
                     )
                 }
             },
             bottomBar = {
                 AnimatedVisibility(
-                    visible = currentStep > 0 && currentStep < 6,
+                    visible = currentStep in 1..3,
                     enter = fadeIn(tween(400)),
                     exit = fadeOut(tween(400))
                 ) {
@@ -240,75 +248,44 @@ fun OnboardingScreen(
                 modifier = Modifier.fillMaxSize(),
                 label = "onboarding_step"
             ) { step ->
-                val stepPadding = if (step > 0 && step < 6) paddingValues else PaddingValues(0.dp)
+                val stepPadding = if (step in 1..3) paddingValues else PaddingValues(0.dp)
                 Box(modifier = Modifier.fillMaxSize().padding(stepPadding)) {
                     when (step) {
                         0 -> WelcomeStep(onGetStarted = { viewModel.nextStep() })
-                    1 -> ScreenTimeSliderStep(
-                        selectedHours = selectedScreenTime ?: 4f,
-                        onSelectHours = { viewModel.selectScreenTime(it) }
-                    )
-                    2 -> TargetScreenTimeSliderStep(
-                        selectedHours = selectedTargetScreenTime ?: 8f,
-                        onSelectHours = { viewModel.selectTargetScreenTime(it) }
-                    )
-                    3 -> ModeSelectionStep(
-                        selectedMode = selectedMode,
-                        selectedChallengeType = selectedChallengeType,
-                        challengeAmount = challengeAmount,
-                        onSelectMode = { viewModel.selectMode(it) },
-                        onSelectChallengeType = { viewModel.selectChallengeType(it) },
-                        onSelectChallengeAmount = { viewModel.selectChallengeAmount(it) }
-                    )
-                    4 -> AppSelectionStep(
-                        viewModel = viewModel
-                    )
-                    5 -> PermissionsStep(
-                        context = context,
-                        hasUsagePermission = hasUsagePermission,
-                        hasOverlayPermission = hasOverlayPermission,
-                        hasAccessibilityPermission = hasAccessibilityPermission,
-                        hasAutostartPermission = hasAutostartPermission,
-                        showAutostartGuidance = needsAutostartGuidance,
-                        hasBackgroundWindowsPermission = hasBackgroundWindowsPermission,
-                        hasBatteryOptimizationExemption = hasBatteryOptimizationExemption,
-                        showBatteryOptimization = showBatteryOptimization,
-                        hasSamsungBatteryPermission = hasSamsungBatteryPermission,
-                        onAutostartClick = {
-                            if (autostartCheckSupported && hasAutostartPermission(context)) {
-                                hasAutostartPermission = true
-                            } else {
+                        1 -> SetDailyLimitStep(
+                            selectedLimit = selectedDailyLimit,
+                            isCustom = isCustomLimit,
+                            customLimitText = customLimitText,
+                            presetValues = viewModel.presetValues,
+                            onSelectPresetIndex = { viewModel.selectPresetIndex(it) },
+                            onCustomLimitChange = { viewModel.setCustomLimitText(it) }
+                        )
+                        2 -> AppSelectionStep(
+                            viewModel = viewModel
+                        )
+                        3 -> PermissionsStep(
+                            context = context,
+                            hasAccessibilityPermission = hasAccessibilityPermission,
+                            hasOverlayPermission = hasOverlayPermission,
+                            hasAutostartPermission = hasAutostartPermission,
+                            showAutostartGuidance = needsAutostartGuidance,
+                            onRefreshPermissions = refreshPermissions,
+                            onAutostartClick = {
                                 userInteractedAutostart = true
                                 openAutostartSettings(context)
                             }
-                        },
-                        onBackgroundWindowsClick = {
-                            openBackgroundWindowsSettings(context)
-                        },
-                        onBatteryOptimizationClick = {
-                            if (isBatteryOptimizationExempt(context)) {
-                                hasBatteryOptimizationExemption = true
-                            } else {
-                                openBatteryOptimizationSettings(context)
+                        )
+                        4 -> AllSetStep(
+                            selectedMode = selectedMode,
+                            selectedDailyLimit = selectedDailyLimit,
+                            onFinish = {
+                                viewModel.completeOnboarding {
+                                    onFinish()
+                                }
                             }
-                        },
-                        onSamsungBatteryClick = {
-                            hasSamsungBatteryPermission = true
-                            openSamsungBatterySettings(context)
-                        }
-                    )
-                    6 -> AllSetStep(
-                        selectedMode = selectedMode,
-                        selectedScreenTime = "${(selectedScreenTime ?: 4f).toInt()}",
-                        selectedTargetScreenTime = formatTargetScreenTime(selectedTargetScreenTime ?: 8f),
-                        onFinish = {
-                            viewModel.completeOnboarding {
-                                onFinish()
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
-                } // Added missing brace for Box
             }
         }
     }
@@ -396,28 +373,47 @@ private fun OnboardingBottomBar(
                 )
             )
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = 24.dp, vertical = 24.dp)
     ) {
         Button(
             onClick = onNextClick,
             enabled = canProceed,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(58.dp)
+                .shadow(
+                    elevation = if (canProceed) 16.dp else 0.dp,
+                    shape = CircleShape,
+                    spotColor = Color(0xFFFF8C00),
+                    ambientColor = Color(0xFFFF8C00)
+                ),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Amber500,
-                contentColor = SurfaceBlack,
+                containerColor = Color(0xFFFFA000),
+                contentColor = Color.Black,
                 disabledContainerColor = Color.White.copy(alpha = 0.08f),
                 disabledContentColor = TextMuted
             ),
-            shape = RoundedCornerShape(16.dp)
+            shape = CircleShape
         ) {
-            Text(
-                text = "Continue",
-                fontFamily = AppFontFamily,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Continue",
+                    fontFamily = AppFontFamily,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (canProceed) Color.Black else TextMuted
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = if (canProceed) Color.Black else TextMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
@@ -447,30 +443,14 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
         }
     }
 
-    // Pulsing glow animation
-    val infiniteTransition = rememberInfiniteTransition(label = "glow")
-    val glowScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowScale"
-    )
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowAlpha"
-    )
-
     // Entry animation
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
+    val iconAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(800, delayMillis = 150),
+        label = "iconAlpha"
+    )
     val titleAlpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = tween(800, delayMillis = 300),
@@ -493,87 +473,105 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(horizontal = 32.dp)
-                .padding(top = 32.dp, bottom = 100.dp),
+                .padding(top = 32.dp, bottom = 110.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(1.35f))
 
-            // Glowing icon
-            val neonCyan = Color(0xFF00E5FF)
-            Box(contentAlignment = Alignment.Center) {
-                // Outer glow
-                Box(
-                    modifier = Modifier
-                        .size(160.dp)
-                        .graphicsLayer { 
-                            scaleX = glowScale
-                            scaleY = glowScale
-                            alpha = glowAlpha
-                        }
-                        .clip(CircleShape)
-                        .background(neonCyan.copy(alpha = 0.15f))
+            // Watch icon without glow
+            Canvas(
+                modifier = Modifier
+                    .size(82.dp)
+                    .graphicsLayer {
+                        alpha = iconAlpha
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+            ) {
+                val w = size.width
+                val h = size.height
+                val gradient = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFFFC021),
+                        Color(0xFFFF8800)
+                    )
                 )
-                // Inner frosted glass circle
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.15f),
-                                    Color.White.copy(alpha = 0.06f)
-                                )
-                            )
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = Color.White.copy(alpha = 0.2f),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_app_logo_transparent),
-                        contentDescription = "FlowShift Logo",
-                        modifier = Modifier.size(80.dp)
+
+                // Top crown button
+                drawRoundRect(
+                    brush = gradient,
+                    topLeft = Offset(w * 0.36f, h * 0.08f),
+                    size = Size(w * 0.28f, h * 0.07f),
+                    cornerRadius = CornerRadius(h * 0.035f)
+                )
+
+                // Stem
+                drawRect(
+                    brush = gradient,
+                    topLeft = Offset(w * 0.46f, h * 0.14f),
+                    size = Size(w * 0.08f, h * 0.06f)
+                )
+
+                // 45-degree top-right stopwatch button
+                withTransform({
+                    rotate(degrees = 42f, pivot = Offset(w * 0.5f, h * 0.55f))
+                }) {
+                    drawRoundRect(
+                        brush = gradient,
+                        topLeft = Offset(w * 0.46f, h * 0.11f),
+                        size = Size(w * 0.08f, h * 0.08f),
+                        cornerRadius = CornerRadius(w * 0.03f)
                     )
                 }
+
+                // Main circular body
+                drawCircle(
+                    brush = gradient,
+                    radius = w * 0.36f,
+                    center = Offset(w * 0.5f, h * 0.55f)
+                )
+
+                // Center vertical slot cutout (transparent)
+                drawRoundRect(
+                    color = Color.Black,
+                    blendMode = BlendMode.Clear,
+                    topLeft = Offset(w * 0.465f, h * 0.38f),
+                    size = Size(w * 0.07f, h * 0.17f),
+                    cornerRadius = CornerRadius(w * 0.035f)
+                )
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             Text(
                 text = buildAnnotatedString {
-                    withStyle(style = SpanStyle(color = TextPrimary)) {
-                        append("Welcome to\n")
+                    withStyle(style = SpanStyle(color = Color(0xFFFFA000))) {
+                        append("Reels")
                     }
-                    withStyle(style = SpanStyle(color = Amber500)) {
-                        append("FlowShift")
+                    withStyle(style = SpanStyle(color = Color.White)) {
+                        append(" in control")
                     }
                 },
                 fontFamily = AppFontFamily,
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
-                lineHeight = 44.sp,
                 modifier = Modifier.graphicsLayer { alpha = titleAlpha }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Reclaim your focus.\nBuild your body.\nGet your life back.",
-                color = TextSecondary,
+                text = "Set a limit. Watch mindfully.\nGet your time back.",
+                color = Color.White.copy(alpha = 0.75f),
                 fontFamily = AppFontFamily,
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 textAlign = TextAlign.Center,
-                lineHeight = 26.sp,
+                lineHeight = 22.sp,
                 modifier = Modifier.graphicsLayer { alpha = subtitleAlpha }
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(1.1f))
         }
 
         Box(
@@ -581,425 +579,372 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(horizontal = 24.dp, vertical = 24.dp)
         ) {
             Button(
                 onClick = handleGetStarted,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .graphicsLayer { alpha = buttonAlpha },
+                    .height(58.dp)
+                    .graphicsLayer { alpha = buttonAlpha }
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = CircleShape,
+                        spotColor = Color(0xFFFF8C00),
+                        ambientColor = Color(0xFFFF8C00)
+                    ),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Amber500,
-                    contentColor = SurfaceBlack
+                    containerColor = Color(0xFFFFA000),
+                    contentColor = Color.Black
                 ),
-                shape = RoundedCornerShape(16.dp)
+                shape = CircleShape
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Let's Go",
+                        fontFamily = AppFontFamily,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  STEP 2: SET YOUR DAILY LIMIT
+// ════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun SetDailyLimitStep(
+    selectedLimit: Int,
+    isCustom: Boolean,
+    customLimitText: String,
+    presetValues: List<Int>,
+    onSelectPresetIndex: (Int) -> Unit,
+    onCustomLimitChange: (String) -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(isCustom) {
+        if (isCustom) {
+            delay(150)
+            focusRequester.requestFocus()
+        } else {
+            focusManager.clearFocus()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "Set your daily limit",
+            color = TextPrimary,
+            fontFamily = AppFontFamily,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            lineHeight = 36.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "How many reels per day?",
+            color = TextSecondary,
+            fontFamily = AppFontFamily,
+            fontSize = 15.sp,
+            textAlign = TextAlign.Center,
+            lineHeight = 22.sp
+        )
+
+        Spacer(modifier = Modifier.height(36.dp))
+
+        if (isCustom) {
+            BasicTextField(
+                value = customLimitText,
+                onValueChange = onCustomLimitChange,
+                modifier = Modifier.focusRequester(focusRequester),
+                textStyle = TextStyle(
+                    fontFamily = AppFontFamily,
+                    fontSize = 44.sp,
+                    color = Amber500,
+                    textAlign = TextAlign.Center,
+                    fontWeight = FontWeight.Bold
+                ),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() }
+                ),
+                singleLine = true,
+                cursorBrush = SolidColor(Amber500),
+                decorationBox = { innerTextField ->
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .width(200.dp)
+                            .height(72.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(
+                                width = 2.dp,
+                                color = Amber500,
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        if (customLimitText.isEmpty()) {
+                            Text(
+                                text = "Type a number",
+                                fontFamily = AppFontFamily,
+                                fontSize = 16.sp,
+                                color = TextMuted,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+        } else {
+            Box(
+                modifier = Modifier.height(72.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Let's Go",
+                    text = "$selectedLimit",
                     fontFamily = AppFontFamily,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+                    fontSize = 52.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Amber500,
+                    textAlign = TextAlign.Center
                 )
             }
         }
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  STEP 2: SCREEN TIME — Slider-based
-// ════════════════════════════════════════════════════════════════════
-
-private fun getScrollLabel(hours: Int): Pair<String, Color> = when {
-    hours <= 2 -> "Casual" to Color(0xFF22C55E)
-    hours <= 4 -> "Distracted" to Color(0xFFF59E0B)
-    hours <= 8 -> "Addicted" to Color(0xFFFF6B35)
-    else -> "Doomscroller" to Color(0xFFEF4444)
-}
-
-private fun getScrollIcon(hours: Int): ImageVector = when {
-    hours <= 2 -> Icons.Default.PhoneAndroid
-    hours <= 4 -> Icons.Default.Schedule
-    hours <= 8 -> Icons.Default.Warning
-    else -> Icons.Default.LocalFireDepartment
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ScreenTimeSliderStep(
-    selectedHours: Float,
-    onSelectHours: (Float) -> Unit
-) {
-    var sliderValue by remember { mutableFloatStateOf(selectedHours) }
-    val hours = sliderValue.roundToInt()
-    val fraction = (hours - 1f) / 17f
-
-    // 3-stage color progression: Amber (1h) -> Vibrant Red (12h) -> Extreme Dark Red (18h)
-    val sliderStartColor = Color(0xFFFBBF24) // Warm Golden Amber (1h)
-    val sliderMidColor = Color(0xFFEF4444)   // Vibrant Red (12h)
-    val sliderEndColor = Color(0xFFA42222)   // Deep Crimson Red (18h)
-
-    val currentColor = if (hours <= 12) {
-        val f = (hours - 1f) / 11f
-        androidx.compose.ui.graphics.lerp(sliderStartColor, sliderMidColor, f)
-    } else {
-        val f = (hours - 12f) / 6f
-        androidx.compose.ui.graphics.lerp(sliderMidColor, sliderEndColor, f)
-    }
-
-    var prevHours by remember { mutableIntStateOf(hours) }
-    val scale = remember { Animatable(1f) }
-
-    LaunchedEffect(hours) {
-        val increased = hours > prevHours
-        prevHours = hours
-        if (increased) {
-            scale.animateTo(
-                targetValue = 1.25f,
-                animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing)
-            )
-            scale.animateTo(
-                targetValue = 1f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessLow
-                )
-            )
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text(
-            text = "How much time do you\nspend scrolling?",
-            color = TextPrimary,
-            fontFamily = AppFontFamily,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            lineHeight = 36.sp
-        )
 
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Be honest — this helps us personalize\nyour experience.",
+            text = "reels per day",
             color = TextSecondary,
             fontFamily = AppFontFamily,
-            fontSize = 15.sp,
-            textAlign = TextAlign.Center,
-            lineHeight = 22.sp
+            fontSize = 16.sp,
+            textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(36.dp))
 
-        // Large hour display — dynamic sizing and color
-        val currentTextSize = (32f + (fraction * 32f)).sp
+        val selectedIndex = if (isCustom) presetValues.size else presetValues.indexOf(selectedLimit).takeIf { it >= 0 } ?: 6
 
-        Box(
-            modifier = Modifier
-                .padding(vertical = 12.dp)
-                .height(80.dp) // Fixed height prevents shifting layout
-                .graphicsLayer {
-                    scaleX = scale.value
-                    scaleY = scale.value
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "${hours}h",
-                color = currentColor,
-                fontFamily = AppFontFamily,
-                fontSize = currentTextSize,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Hour markers
-        androidx.compose.ui.layout.Layout(
-            content = {
-                Text("1h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                Text("6h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                Text("12h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                Text("18h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+        DailyLimitPicker(
+            values = presetValues,
+            selectedIndex = selectedIndex,
+            onValueSelected = onSelectPresetIndex,
+            hasCustom = true,
+            onCustomClick = {
+                focusRequester.requestFocus()
             },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp)
-        ) { measurables, constraints ->
-            val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
-            layout(constraints.maxWidth, placeables.maxOf { it.height }) {
-                val width = constraints.maxWidth
-                val fractions = listOf(0f, 5f / 17f, 11f / 17f, 1f)
-                placeables.forEachIndexed { index, placeable ->
-                    val x = (width * fractions[index] - placeable.width / 2f).roundToInt()
-                    placeable.placeRelative(x = x, y = 0)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Custom slider
-        val sliderColors = SliderDefaults.colors(
-            thumbColor = currentColor,
-            inactiveTrackColor = Color.White.copy(alpha = 0.12f),
-            activeTickColor = Color.Transparent,
-            inactiveTickColor = Color.Transparent
-        )
-        Slider(
-            value = sliderValue,
-            onValueChange = { sliderValue = it },
-            onValueChangeFinished = { onSelectHours(sliderValue) },
-            valueRange = 1f..18f,
-            steps = 16,
-            modifier = Modifier.fillMaxWidth(),
-            colors = sliderColors,
-            track = { sliderState ->
-                val trackFraction = (sliderState.value - 1f) / 17f
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.12f))
-                ) {
-                    if (trackFraction > 0f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(trackFraction)
-                                .height(8.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = if (hours <= 12) {
-                                            listOf(sliderStartColor, currentColor)
-                                        } else {
-                                            listOf(sliderStartColor, sliderMidColor, currentColor)
-                                        }
-                                    )
-                                )
-                        )
-                    }
-                }
-            }
+            modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
-// ════════════════════════════════════════════════════════════════════
-//  STEP 3: TARGET SCREEN TIME — Cool Rehabilitation Vibe
-// ════════════════════════════════════════════════════════════════════
-
-private fun formatTargetScreenTime(sliderIndex: Float): String {
-    val index = sliderIndex.roundToInt().coerceIn(0, 36)
-    val totalMinutes = if (index <= 24) {
-        index * 15
-    } else {
-        360 + (index - 24) * 30
-    }
-    val h = totalMinutes / 60
-    val m = totalMinutes % 60
-    return when {
-        h == 0 && m == 0 -> "0m"
-        h == 0 -> "${m}m"
-        m == 0 -> "${h}h"
-        else -> "${h}h ${m}m"
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TargetScreenTimeSliderStep(
-    selectedHours: Float,
-    onSelectHours: (Float) -> Unit
+private fun DailyLimitPicker(
+    values: List<Int>,
+    selectedIndex: Int,
+    onValueSelected: (index: Int) -> Unit,
+    modifier: Modifier = Modifier,
+    hasCustom: Boolean = true,
+    onCustomClick: () -> Unit = {}
 ) {
-    var sliderValue by remember { mutableFloatStateOf(selectedHours) }
-    val index = sliderValue.roundToInt().coerceIn(0, 36)
-    val fraction = index / 36f
-    val formattedTime = formatTargetScreenTime(sliderValue)
+    val coroutineScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val totalCount = values.size + (if (hasCustom) 1 else 0)
+    val initialPage = selectedIndex.coerceIn(0, (totalCount - 1).coerceAtLeast(0))
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { totalCount }
+    )
 
-    // 3-stage color progression: Vibrant Cyan (0m) -> Soft Ice Cyan (6h) -> Pure White (12h)
-    val sliderStartColor = Color(0xFF00E5FF) // Vibrant Neon Cyan (0m)
-    val sliderMidColor = Color(0xFF99F2FF)   // Soft Ice Cyan (6h)
-    val sliderEndColor = Color(0xFFFFFFFF)   // Pure White (12h)
-
-    val currentColor = if (index <= 24) {
-        val f = index / 24f
-        androidx.compose.ui.graphics.lerp(sliderStartColor, sliderMidColor, f)
-    } else {
-        val f = (index - 24) / 12f
-        androidx.compose.ui.graphics.lerp(sliderMidColor, sliderEndColor, f)
-    }
-
-    var prevIndex by remember { mutableIntStateOf(index) }
-    val scale = remember { Animatable(1f) }
-
-    LaunchedEffect(index) {
-        val increased = index > prevIndex
-        prevIndex = index
-        if (increased) {
-            scale.animateTo(
-                targetValue = 1.25f,
-                animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing)
-            )
-            scale.animateTo(
-                targetValue = 1f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessLow
-                )
-            )
+    // Sync external selectedIndex updates to pager
+    LaunchedEffect(selectedIndex) {
+        if (selectedIndex in 0 until totalCount && pagerState.currentPage != selectedIndex) {
+            pagerState.animateScrollToPage(selectedIndex)
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
+    // Automatically update selected limit as user scrolls through numbers
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }
+            .distinctUntilChanged()
+            .collect { page ->
+                if (page in 0 until totalCount) {
+                    onValueSelected(page)
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+            }
+    }
+
+    BoxWithConstraints(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
+        val chipWidth = 72.dp
+        val horizontalPadding = ((maxWidth - chipWidth) / 2).coerceAtLeast(0.dp)
 
-        Text(
-            text = "Set your target",
-            color = TextPrimary,
-            fontFamily = AppFontFamily,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            lineHeight = 36.sp
-        )
+        HorizontalPager(
+            state = pagerState,
+            pageSize = PageSize.Fixed(chipWidth),
+            pageSpacing = 16.dp,
+            contentPadding = PaddingValues(horizontal = horizontalPadding),
+            beyondViewportPageCount = 2,
+            modifier = Modifier.fillMaxWidth()
+        ) { page ->
+            val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
+            val scale = 1f + (0.12f * (1f - pageOffset.coerceIn(0f, 1f)))
+            val alpha = 0.45f + (0.55f * (1f - pageOffset.coerceIn(0f, 1f)))
+            val isSelected = page == pagerState.currentPage
 
-        Spacer(modifier = Modifier.height(8.dp))
+            if (page < values.size) {
+                DailyLimitChip(
+                    value = values[page],
+                    isSelected = isSelected,
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(page)
+                        }
+                    },
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        this.alpha = alpha
+                    }
+                )
+            } else {
+                CustomDailyLimitChip(
+                    isSelected = isSelected,
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(page)
+                        }
+                        onCustomClick()
+                    },
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        this.alpha = alpha
+                    }
+                )
+            }
+        }
+    }
+}
 
-        Text(
-            text = "How much screen time do you\nactually want per day?",
-            color = TextSecondary,
-            fontFamily = AppFontFamily,
-            fontSize = 15.sp,
-            textAlign = TextAlign.Center,
-            lineHeight = 22.sp
-        )
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Large hour display — dynamic sizing and color
-        val currentTextSize = (32f + (fraction * 16f)).sp
-
-        Box(
-            modifier = Modifier
-                .padding(vertical = 12.dp)
-                .height(80.dp) // Fixed height prevents shifting layout
-                .graphicsLayer {
-                    scaleX = scale.value
-                    scaleY = scale.value
-                },
-            contentAlignment = Alignment.Center
-        ) {
+@Composable
+private fun DailyLimitChip(
+    value: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .width(72.dp)
+            .height(72.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (isSelected) Amber500
+                else Color.White.copy(alpha = 0.08f)
+            )
+            .border(
+                width = if (isSelected) 0.dp else 1.dp,
+                color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = formattedTime,
-                color = currentColor,
+                text = "$value",
                 fontFamily = AppFontFamily,
-                fontSize = currentTextSize,
-                fontWeight = FontWeight.Bold
+                style = if (value >= 1000) MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        else MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = if (isSelected) Color.Black else TextPrimary,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "reels",
+                fontFamily = AppFontFamily,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isSelected) Color.Black.copy(alpha = 0.75f) else TextSecondary,
+                textAlign = TextAlign.Center
             )
         }
+    }
+}
 
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Hour markers
-        androidx.compose.ui.layout.Layout(
-            content = {
-                Text("0m", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                Text("3h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                Text("6h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                Text("12h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-            },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp)
-        ) { measurables, constraints ->
-            val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
-            layout(constraints.maxWidth, placeables.maxOf { it.height }) {
-                val width = constraints.maxWidth
-                val fractions = listOf(0f, 12f / 36f, 24f / 36f, 1f)
-                placeables.forEachIndexed { index, placeable ->
-                    val x = (width * fractions[index] - placeable.width / 2f).roundToInt()
-                    placeable.placeRelative(x = x, y = 0)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Custom slider
-        val sliderColors = SliderDefaults.colors(
-            thumbColor = currentColor,
-            inactiveTrackColor = Color.White.copy(alpha = 0.12f),
-            activeTickColor = Color.Transparent,
-            inactiveTickColor = Color.Transparent
+@Composable
+private fun CustomDailyLimitChip(
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .width(72.dp)
+            .height(72.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (isSelected) Amber500
+                else Color.White.copy(alpha = 0.08f)
+            )
+            .border(
+                width = if (isSelected) 0.dp else 1.dp,
+                color = if (isSelected) Color.Transparent else Color.White.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Custom",
+            fontFamily = AppFontFamily,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = if (isSelected) Color.Black else TextPrimary,
+            textAlign = TextAlign.Center
         )
-        Slider(
-            value = sliderValue,
-            onValueChange = { sliderValue = it },
-            onValueChangeFinished = { onSelectHours(sliderValue) },
-            valueRange = 0f..36f,
-            steps = 35,
-            modifier = Modifier.fillMaxWidth(),
-            colors = sliderColors,
-            track = { sliderState ->
-                val trackFraction = (sliderState.value / 36f).coerceIn(0f, 1f)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.12f))
-                ) {
-                    if (trackFraction > 0f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(trackFraction)
-                                .height(8.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = if (index <= 24) {
-                                            listOf(sliderStartColor, currentColor)
-                                        } else {
-                                            listOf(sliderStartColor, sliderMidColor, currentColor)
-                                        }
-                                    )
-                                )
-                        )
-                    }
-                }
-            }
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  STEP 4: MODE SELECTION
+//  STEP 3: MODE SELECTION
 // ════════════════════════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1042,18 +987,6 @@ private fun ModeSelectionStep(
         )
 
         Spacer(modifier = Modifier.height(32.dp))
-
-        // Easy
-        OnboardingModeCard(
-            title = "Easy",
-            description = "After the set screen time, hold for 90 seconds before you can proceed scrolling again.",
-            icon = Icons.Default.Timer,
-            accentColor = ModeEasyAccent,
-            isSelected = selectedMode == BlockingMode.EASY,
-            onClick = { onSelectMode(BlockingMode.EASY) }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
 
         // Discipline
         OnboardingModeCard(
@@ -1199,7 +1132,7 @@ private fun OnboardingModeCard(
 
 
 // ════════════════════════════════════════════════════════════════════
-//  STEP 5: APP SELECTION
+//  STEP 4: APP SELECTION
 // ════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -1437,47 +1370,95 @@ private fun OnboardingAppListItem(
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  STEP 6: PERMISSIONS
+//  STEP 5: PERMISSIONS
 // ════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun PermissionsStep(
     context: Context,
-    hasUsagePermission: Boolean,
-    hasOverlayPermission: Boolean,
     hasAccessibilityPermission: Boolean,
+    hasOverlayPermission: Boolean,
     hasAutostartPermission: Boolean,
     showAutostartGuidance: Boolean,
-    hasBackgroundWindowsPermission: Boolean,
-    hasBatteryOptimizationExemption: Boolean,
-    showBatteryOptimization: Boolean,
-    hasSamsungBatteryPermission: Boolean,
-    onAutostartClick: () -> Unit,
-    onBackgroundWindowsClick: () -> Unit,
-    onBatteryOptimizationClick: () -> Unit,
-    onSamsungBatteryClick: () -> Unit
+    onRefreshPermissions: () -> Unit,
+    onAutostartClick: () -> Unit
 ) {
-    var showBackgroundWindowsGuide by remember { mutableStateOf(false) }
-    var showSamsungBatteryGuide by remember { mutableStateOf(false) }
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
+    var accessibilityDismissed by remember { mutableStateOf(false) }
+    var hasAttemptedAccessibility by remember { mutableStateOf(false) }
+    var hasAttemptedOverlay by remember { mutableStateOf(false) }
+    var hasAttemptedAutostart by remember { mutableStateOf(false) }
 
-    if (showBackgroundWindowsGuide) {
-        BackgroundWindowsGuideDialog(
-            onDismiss = { showBackgroundWindowsGuide = false },
-            onProceed = {
-                showBackgroundWindowsGuide = false
-                onBackgroundWindowsClick()
-            }
-        )
+    var isAppResumed by remember { mutableStateOf(true) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        isAppResumed = true
+        onRefreshPermissions()
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
+        isAppResumed = false
     }
 
-    if (showSamsungBatteryGuide) {
-        SamsungBatteryGuideDialog(
-            onDismiss = { showSamsungBatteryGuide = false },
-            onProceed = {
-                showSamsungBatteryGuide = false
-                onSamsungBatteryClick()
+    val launchAccessibility = {
+        if (!hasAccessibilityPermission(context)) {
+            accessibilityDismissed = false
+            hasAttemptedAccessibility = true
+            showAccessibilityDialog = true
+        }
+    }
+
+    val launchOverlay = {
+        hasAttemptedOverlay = true
+        try {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${context.packageName}")
+            )
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                context.startActivity(intent)
+            } catch (e2: Exception) {
+                openAppSettings(context)
             }
-        )
+        }
+    }
+
+    val launchAutostart = {
+        hasAttemptedAutostart = true
+        onAutostartClick()
+    }
+
+    // Auto-launch permissions sequence: hold for half second then launch one by one
+    LaunchedEffect(
+        isAppResumed,
+        hasAccessibilityPermission,
+        hasOverlayPermission,
+        hasAutostartPermission,
+        showAutostartGuidance,
+        showAccessibilityDialog,
+        accessibilityDismissed
+    ) {
+        if (!isAppResumed || showAccessibilityDialog) return@LaunchedEffect
+
+        // Hold for half a second before auto-launching
+        delay(500)
+
+        if (!isAppResumed || showAccessibilityDialog) return@LaunchedEffect
+
+        if (!hasAccessibilityPermission) {
+            if (!hasAttemptedAccessibility && !accessibilityDismissed) {
+                launchAccessibility()
+            }
+        } else if (!hasOverlayPermission) {
+            if (!hasAttemptedOverlay) {
+                launchOverlay()
+            }
+        } else if (showAutostartGuidance && !hasAutostartPermission) {
+            if (!hasAttemptedAutostart) {
+                launchAutostart()
+            }
+        }
     }
 
     Column(
@@ -1530,7 +1511,7 @@ private fun PermissionsStep(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "FlowShift needs these permissions to\ntrack and block apps effectively.",
+            text = "ReelsRot needs these permissions to\ntrack and block apps effectively.",
             color = TextSecondary,
             fontFamily = AppFontFamily,
             fontSize = 15.sp,
@@ -1540,58 +1521,21 @@ private fun PermissionsStep(
 
         Spacer(modifier = Modifier.height(36.dp))
 
-        // Usage Access
-        PermissionCard(
-            icon = Icons.Default.QueryStats,
-            title = "Usage Access",
-            description = "Detects when you open a distracting app so we can step in.",
-            isGranted = hasUsagePermission,
-            onClick = {
-                if (hasUsageStatsPermission(context)) {
-                    return@PermissionCard
-                }
-                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                intent.data = Uri.parse("package:${context.packageName}")
-                try {
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                }
-            }
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Overlay
-        PermissionCard(
-            icon = Icons.Default.Layers,
-            title = "Display Over Apps",
-            description = "Shows the blocker screen when you try to open a blocked app.",
-            isGranted = hasOverlayPermission,
-            onClick = {
-                if (Settings.canDrawOverlays(context)) {
-                    return@PermissionCard
-                }
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:${context.packageName}")
-                )
-                context.startActivity(intent)
-            }
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
         // Accessibility
-        var showAccessibilityDialog by remember { mutableStateOf(false) }
-
         if (showAccessibilityDialog) {
             com.flow.shift.core.designsystem.AccessibilityDisclosureDialog(
-                onDismiss = { showAccessibilityDialog = false },
+                onDismiss = {
+                    showAccessibilityDialog = false
+                    accessibilityDismissed = true
+                },
                 onAccept = {
                     showAccessibilityDialog = false
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    context.startActivity(intent)
+                    try {
+                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        openAppSettings(context)
+                    }
                 }
             )
         }
@@ -1605,71 +1549,39 @@ private fun PermissionsStep(
                 if (hasAccessibilityPermission(context)) {
                     return@PermissionCard
                 }
-                showAccessibilityDialog = true
+                launchAccessibility()
             }
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        if (showBatteryOptimization) {
-            PermissionCard(
-                icon = Icons.Default.BatteryAlert,
-                title = "Battery Optimization",
-                description = "Prevents your phone from killing FlowShift in the background. Critical for reliable blocking.",
-                isGranted = hasBatteryOptimizationExemption,
-                onClick = onBatteryOptimizationClick
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-        }
-
-        // OEM-specific permissions
-        val manufacturer = Build.MANUFACTURER.lowercase()
-        val isChineseOEM = manufacturer in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
-        val isRealme = manufacturer == "realme"
-        val isSamsung = manufacturer == "samsung"
+        // Display Over Other Apps
+        PermissionCard(
+            icon = Icons.Default.Layers,
+            title = "Display Over Other Apps",
+            description = "Shows the blocker screen when you try to open a blocked app.",
+            isGranted = hasOverlayPermission,
+            onClick = {
+                if (Settings.canDrawOverlays(context)) {
+                    return@PermissionCard
+                }
+                launchOverlay()
+            }
+        )
 
         if (showAutostartGuidance) {
-            // Background Autostart
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Autostart
             PermissionCard(
                 icon = Icons.Default.Settings,
                 title = "Autostart",
                 description = "Prevents your phone from stopping the app in the background.",
                 isGranted = hasAutostartPermission,
-                onClick = onAutostartClick
+                onClick = {
+                    launchAutostart()
+                }
             )
-
-            Spacer(modifier = Modifier.height(14.dp))
-        }
-
-        if (isChineseOEM) {
-            // Background Windows
-            PermissionCard(
-                icon = Icons.Default.OpenInNew,
-                title = if (isRealme) "Allow Background Activity" else "Background Windows",
-                description = if (isRealme) {
-                    "Lets FlowShift keep working after you leave the app."
-                } else {
-                    "Allows the blocker screen to open from the background."
-                },
-                isGranted = hasBackgroundWindowsPermission,
-                onClick = { showBackgroundWindowsGuide = true }
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-        }
-
-        if (isSamsung) {
-            // Samsung Battery / Sleeping Apps
-            PermissionCard(
-                icon = Icons.Default.BatterySaver,
-                title = "Samsung Battery Settings",
-                description = "Add FlowShift to 'Never sleeping apps' so Samsung doesn't stop it.",
-                isGranted = hasSamsungBatteryPermission,
-                onClick = { showSamsungBatteryGuide = true }
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -1777,14 +1689,13 @@ private fun PermissionCard(
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  STEP 7: ALL SET
+//  STEP 6: ALL SET
 // ════════════════════════════════════════════════════════════════════
 
 @Composable
 private fun AllSetStep(
     selectedMode: BlockingMode,
-    selectedScreenTime: String,
-    selectedTargetScreenTime: String,
+    selectedDailyLimit: Int,
     onFinish: () -> Unit
 ) {
     // Entry animation
@@ -1859,7 +1770,7 @@ private fun AllSetStep(
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = "You committed to reducing your $selectedScreenTime hrs/day\nof screen time toward $selectedTargetScreenTime per day using ${selectedMode.name.lowercase().replaceFirstChar { it.uppercase() }} Mode.",
+            text = "You committed to a daily limit of $selectedDailyLimit reels\nusing ${selectedMode.name.lowercase().replaceFirstChar { it.uppercase() }} Mode.",
             color = TextSecondary,
             fontFamily = AppFontFamily,
             fontSize = 16.sp,
@@ -1874,26 +1785,39 @@ private fun AllSetStep(
             onClick = onFinish,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .alpha(contentAlpha),
+                .height(58.dp)
+                .alpha(contentAlpha)
+                .shadow(
+                    elevation = 16.dp,
+                    shape = CircleShape,
+                    spotColor = Color(0xFFFF8C00),
+                    ambientColor = Color(0xFFFF8C00)
+                ),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Amber500,
-                contentColor = SurfaceBlack
+                containerColor = Color(0xFFFFA000),
+                contentColor = Color.Black
             ),
-            shape = RoundedCornerShape(16.dp)
+            shape = CircleShape
         ) {
-            Text(
-                text = "Commit & Start",
-                fontFamily = AppFontFamily,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Commit & Start",
+                    fontFamily = AppFontFamily,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = Color.Black,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -1928,31 +1852,15 @@ private fun hasAccessibilityPermission(context: Context): Boolean {
     return false
 }
 
-private fun hasUsageStatsPermission(context: Context): Boolean {
-    val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-    val mode = appOps.checkOpNoThrow(
-        AppOpsManager.OPSTR_GET_USAGE_STATS,
-        Process.myUid(),
-        context.packageName
-    )
-    return mode == AppOpsManager.MODE_ALLOWED
-}
 
 private fun canCheckAutostart(context: Context): Boolean {
     val manufacturer = Build.MANUFACTURER.lowercase()
-    if (manufacturer in listOf("xiaomi", "redmi", "poco")) {
+    val brand = Build.BRAND.lowercase()
+    if (manufacturer in listOf("xiaomi", "redmi", "poco") || brand in listOf("xiaomi", "redmi", "poco")) {
         return true
     }
     return try {
-        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val op = try {
-            val field = AppOpsManager::class.java.getDeclaredField("OP_AUTO_START")
-            field.getInt(null)
-        } catch (e: Exception) {
-            10008
-        }
-        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
-        method.invoke(appOps, op, Process.myUid(), context.packageName)
+        AppOpsManager::class.java.getDeclaredField("OP_AUTO_START")
         true
     } catch (e: Exception) {
         false
@@ -1961,8 +1869,13 @@ private fun canCheckAutostart(context: Context): Boolean {
 
 private fun hasAutostartPermission(context: Context): Boolean {
     val manufacturer = Build.MANUFACTURER.lowercase()
-    if (manufacturer !in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")) {
-        return true
+    val brand = Build.BRAND.lowercase()
+    val isXiaomiFamily = manufacturer in listOf("xiaomi", "redmi", "poco") || brand in listOf("xiaomi", "redmi", "poco")
+
+    if (!isXiaomiFamily) {
+        val isOtherChineseOEM = manufacturer in listOf("oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor") ||
+                brand in listOf("oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")
+        return !isOtherChineseOEM
     }
 
     try {
@@ -2011,29 +1924,6 @@ private fun openAutostartSettings(context: Context) {
     openAppSettings(context)
 }
 
-private fun openBackgroundWindowsSettings(context: Context) {
-    if (Build.MANUFACTURER.equals("realme", ignoreCase = true)) {
-        // Realme does not provide a stable public intent for App battery management.
-        // Its App info screen contains Battery usage, where users can allow background activity.
-        openAppSettings(context)
-        return
-    }
-
-    try {
-        val intent = Intent("miui.intent.action.APP_PERM_EDITOR").apply {
-            setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
-            putExtra("extra_pkgname", context.packageName)
-        }
-        if (context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null) {
-            context.startActivity(intent)
-            return
-        }
-    } catch (e: Exception) {
-        // Fallback
-    }
-    
-    openAppSettings(context)
-}
 
 private fun openAppSettings(context: Context) {
     try {
@@ -2046,234 +1936,3 @@ private fun openAppSettings(context: Context) {
     }
 }
 
-private fun hasBackgroundWindowPermission(context: Context): Boolean {
-    val manufacturer = Build.MANUFACTURER.lowercase()
-    if (manufacturer !in listOf("xiaomi", "redmi", "poco", "oppo", "vivo", "oneplus", "realme", "iqoo", "huawei", "honor")) {
-        return true
-    }
-    
-    try {
-        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-
-        // 1. Try string op name if supported
-        try {
-            val mode = appOps.checkOpNoThrow("android:background_start_activity", Process.myUid(), context.packageName)
-            if (mode == AppOpsManager.MODE_ALLOWED) return true
-            if (mode == AppOpsManager.MODE_IGNORED || mode == AppOpsManager.MODE_ERRORED) return false
-        } catch (e: Exception) {
-            // Fall through to int op code
-        }
-
-        // 2. Try integer op code (10021 or OP_BACKGROUND_START_ACTIVITY field)
-        val op = try {
-            val field = AppOpsManager::class.java.getDeclaredField("OP_BACKGROUND_START_ACTIVITY")
-            field.getInt(null)
-        } catch (e: Exception) {
-            10021
-        }
-        
-        val method = appOps.javaClass.getMethod("checkOpNoThrow", Int::class.java, Int::class.java, String::class.java)
-        val mode = method.invoke(appOps, op, Process.myUid(), context.packageName) as Int
-        return mode == AppOpsManager.MODE_ALLOWED
-    } catch (e: Exception) {
-        // If we can't check it programmatically, default to true to not block the user
-        return true
-    }
-}
-
-@Composable
-private fun BackgroundWindowsGuideDialog(
-    onDismiss: () -> Unit,
-    onProceed: () -> Unit
-) {
-    val manufacturer = Build.MANUFACTURER.lowercase()
-    
-    val guideText = when {
-        manufacturer in listOf("xiaomi", "redmi", "poco") -> 
-            "1. You will be taken to App Info.\n2. Tap on 'Other permissions'.\n3. Find 'Display pop-up windows while running in the background' and set it to 'Always allow'."
-        manufacturer == "realme" ->
-            "1. You will be taken to FlowShift's App info.\n2. Tap 'Battery usage'.\n3. Turn on 'Allow background activity' (or select 'Unrestricted')."
-        manufacturer in listOf("oppo", "oneplus") ->
-            "1. You will be taken to App Info.\n2. Tap on 'Permissions'.\n3. Find 'Display over other apps' or similar and allow it."
-        manufacturer in listOf("vivo", "iqoo") -> 
-            "1. You will be taken to App Info.\n2. Tap on 'Permissions' or 'Single permission settings'.\n3. Enable 'Background pop-ups'."
-        manufacturer in listOf("huawei", "honor") -> 
-            "1. You will be taken to App Info.\n2. Tap on 'Permissions'.\n3. Allow 'Dropzone' or 'Display over other apps'."
-        else -> 
-            "Please find the permission to 'Display pop-up windows while running in the background' and allow it."
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SurfaceBlack,
-        titleContentColor = TextPrimary,
-        textContentColor = TextSecondary,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Text(
-                text = "Enable Background Windows",
-                fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
-            )
-        },
-        text = {
-            Text(
-                text = guideText,
-                fontFamily = AppFontFamily,
-                fontSize = 15.sp,
-                lineHeight = 22.sp
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = onProceed,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Amber500,
-                    contentColor = SurfaceBlack
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = "Let's do it",
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    text = "Cancel",
-                    color = TextMuted,
-                    fontFamily = AppFontFamily
-                )
-            }
-        }
-    )
-}
-
-@Composable
-private fun SamsungBatteryGuideDialog(
-    onDismiss: () -> Unit,
-    onProceed: () -> Unit
-) {
-    val guideText = "1. You will be taken to Samsung Battery settings.\n" +
-        "2. Tap on 'Background usage limits'.\n" +
-        "3. Tap on 'Never sleeping apps'.\n" +
-        "4. Tap '+' and add 'FlowShift'.\n\n" +
-        "Alternatively:\n" +
-        "1. Go to Settings → Apps → FlowShift.\n" +
-        "2. Tap 'Battery'.\n" +
-        "3. Select 'Unrestricted'."
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SurfaceBlack,
-        titleContentColor = TextPrimary,
-        textContentColor = TextSecondary,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Text(
-                text = "Samsung Battery Settings",
-                fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
-            )
-        },
-        text = {
-            Text(
-                text = guideText,
-                fontFamily = AppFontFamily,
-                fontSize = 15.sp,
-                lineHeight = 22.sp
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = onProceed,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Amber500,
-                    contentColor = SurfaceBlack
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = "Let's do it",
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    text = "Cancel",
-                    color = TextMuted,
-                    fontFamily = AppFontFamily
-                )
-            }
-        }
-    )
-}
-
-private fun isBatteryOptimizationExempt(context: Context): Boolean {
-    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return false
-    return powerManager.isIgnoringBatteryOptimizations(context.packageName)
-}
-
-@SuppressLint("BatteryLife")
-private fun openBatteryOptimizationSettings(context: Context) {
-    try {
-        // Direct exemption request — shows a system dialog to the user
-        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-            data = Uri.parse("package:${context.packageName}")
-        }
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        // Fallback: open the full battery optimization list
-        try {
-            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-        } catch (e2: Exception) {
-            openAppSettings(context)
-        }
-    }
-}
-
-private fun openSamsungBatterySettings(context: Context) {
-    val intents = listOf(
-        // Samsung Device Care → Battery (One UI 4+)
-        Intent().setComponent(android.content.ComponentName(
-            "com.samsung.android.lool",
-            "com.samsung.android.sm.battery.ui.BatteryActivity"
-        )),
-        // Samsung Smart Manager (older Samsung)
-        Intent().setComponent(android.content.ComponentName(
-            "com.samsung.android.sm",
-            "com.samsung.android.sm.battery.ui.BatteryActivity"
-        )),
-        // Samsung Device Care main page
-        Intent().setComponent(android.content.ComponentName(
-            "com.samsung.android.lool",
-            "com.samsung.android.sm.ui.dashboard.SmartManagerDashBoardActivity"
-        ))
-    )
-
-    for (intent in intents) {
-        try {
-            if (context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) != null) {
-                context.startActivity(intent)
-                return
-            }
-        } catch (e: Exception) {
-            // Try next
-        }
-    }
-
-    // Fallback to generic battery settings
-    try {
-        context.startActivity(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))
-    } catch (e: Exception) {
-        openAppSettings(context)
-    }
-}

@@ -13,7 +13,6 @@ import com.flow.shift.core.database.WorkoutSessionDao
 import com.flow.shift.core.datastore.SettingsDataStore
 import com.flow.shift.feature.dashboard.parseTargetScreenTimeMillis
 import com.flow.shift.feature.exerciseblocker.BlockerActivity
-import com.flow.shift.feature.exerciseblocker.WaitActivity
 import com.flow.shift.feature.modes.BlockingMode
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -156,7 +155,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
         val eventType = event.eventType
         
-        // Never block our own app (FlowShift itself, including BlockerActivity/WaitActivity)
+        // Never block our own app (ReelsRot itself, including BlockerActivity)
         if (packageName == applicationContext.packageName) return
 
         if (!AppTrackingService.isRunning) {
@@ -1120,8 +1119,6 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             return cachedTargetReached
         }
 
-        val targetScreenTimeStr = settingsDataStore.targetScreenTime.first()
-        val targetMillis = parseTargetScreenTimeMillis(targetScreenTimeStr)
         val startOfDay = java.util.Calendar.getInstance().apply {
             timeInMillis = now
             set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -1130,15 +1127,11 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             set(java.util.Calendar.MILLISECOND, 0)
         }.timeInMillis
 
-        val usageByPackage = usageTracker.getUsageMillisByPackage(startOfDay, now, protectedPackages)
-        var totalUsageTodayMillis = usageByPackage.values.sum()
-        
-        // Fix for UsageStatsManager lag when RAM is cleared:
-        // Always persist and retrieve the highest seen usage for today.
-        totalUsageTodayMillis = settingsDataStore.updateHighestUsageSeenToday(startOfDay, totalUsageTodayMillis)
+        val reelCount = settingsDataStore.getReelCountToday(startOfDay)
+        val dailyReelLimit = settingsDataStore.dailyReelLimit.first()
 
         cachedTargetPackages = protectedPackages
-        cachedTargetReached = totalUsageTodayMillis >= targetMillis
+        cachedTargetReached = reelCount >= dailyReelLimit
         cachedTargetCheckedAtMillis = now
 
         return cachedTargetReached
@@ -1209,11 +1202,6 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         val breakDurationMinutes = settingsDataStore.breakDurationMinutes.first()
 
         val intent = when (blockingMode) {
-            BlockingMode.EASY -> Intent(this, WaitActivity::class.java).apply {
-                putExtra("TARGET_PACKAGE", packageName)
-                putExtra("WAIT_SECONDS", 90)
-                putExtra("BREAK_DURATION_MINUTES", breakDurationMinutes)
-            }
             BlockingMode.STRICT -> Intent(this, BlockerActivity::class.java).apply {
                 putExtra("TARGET_PACKAGE", packageName)
                 putExtra("REQUIRED_REPS", challengeAmount)

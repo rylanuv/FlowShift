@@ -43,7 +43,6 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.layout.layout
 import android.widget.Toast
 import java.text.DateFormat
-import com.flow.shift.core.designsystem.ReelCountExplainerDialog
 import java.util.Date
 import java.util.Calendar
 import androidx.compose.ui.zIndex
@@ -61,9 +60,8 @@ fun SettingsScreen(
     val blockingModeStr by viewModel.blockingMode.collectAsStateWithLifecycle()
     val currentMode = com.flow.shift.feature.modes.BlockingMode.fromString(blockingModeStr)
     
-    var showTargetScreenTimeDialog by remember { mutableStateOf(false) }
+    var showTargetReelsDialog by remember { mutableStateOf(false) }
     var showLockTargetDialog by remember { mutableStateOf(false) }
-    var showReelCountExplainerDialog by remember { mutableStateOf(false) }
 
     val protectedAppCount = state.blockedApps.size
     val enabledProtectionSignals = listOf(
@@ -223,44 +221,28 @@ fun SettingsScreen(
                     }
                 }
             )
-            Spacer(modifier = Modifier.height(16.dp))
-            SettingsToggleRow(
-                icon = Icons.Default.Pin,
-                label = "Show Reel Count",
-                checked = state.appearance.showReelCount && isPremium,
-                subtitle = "Display reel count on top of screen",
-                isLocked = !isPremium,
-                onCheckedChange = { isChecked -> 
-                    if (!isPremium) {
-                        showReelCountExplainerDialog = true
-                    } else if (isChecked) {
-                        showReelCountExplainerDialog = true
-                    } else {
-                        viewModel.setShowReelCount(false)
-                    }
-                }
-            )
+
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // ── Target Screen Time ──
+        // ── Target Reels Amount ──
         SettingsSection(
             modifier = Modifier.fillMaxWidth(),
-            icon = Icons.Default.Timer,
-            title = "TARGET SCREEN TIME",
+            icon = Icons.Default.PlayCircle,
+            title = "TARGET REELS AMOUNT",
             subtitle = "Your daily goal"
         ) {
             SettingsNavRow(
                 icon = Icons.Default.Flag,
                 label = "Daily Target",
-                value = state.targetScreenTime,
+                value = "${state.dailyReelLimit} reels",
                 valueColor = Amber500,
                 onClick = {
                     if (System.currentTimeMillis() < state.targetScreenTimeLockedUntil && !state.bypassTargetLock) {
                         Toast.makeText(context, "Target is locked and cannot be adjusted", Toast.LENGTH_SHORT).show()
                     } else {
-                        showTargetScreenTimeDialog = true
+                        showTargetReelsDialog = true
                     }
                 }
             )
@@ -379,7 +361,7 @@ fun SettingsScreen(
 
                     Column {
                         Text(
-                            text = if (isPremium) "FlowShift Pro" else "Free Plan",
+                            text = if (isPremium) "ReelsRot Pro" else "Free Plan",
                             color = if (isPremium) PremiumGold else TextPrimary,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
@@ -532,7 +514,7 @@ fun SettingsScreen(
                 onClick = {
                     val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
                         data = android.net.Uri.parse("mailto:rylpix.app@gmail.com")
-                        putExtra(android.content.Intent.EXTRA_SUBJECT, "FlowShift Feedback")
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "ReelsRot Feedback")
                     }
                     try {
                         context.startActivity(intent)
@@ -548,8 +530,8 @@ fun SettingsScreen(
                 onClick = {
                     val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                         type = "text/plain"
-                        putExtra(android.content.Intent.EXTRA_SUBJECT, "FlowShift App")
-                        putExtra(android.content.Intent.EXTRA_TEXT, "Check out FlowShift, the best app to stop doomscrolling! https://play.google.com/store/apps/details?id=${context.packageName}")
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "ReelsRot App")
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Check out ReelsRot, the best app to track and block reels! https://play.google.com/store/apps/details?id=${context.packageName}")
                     }
                     context.startActivity(android.content.Intent.createChooser(intent, "Share via"))
                 }
@@ -588,31 +570,15 @@ fun SettingsScreen(
                 }
             )
         }
+
         
-        if (showReelCountExplainerDialog) {
-            ReelCountExplainerDialog(
-                isPremium = isPremium,
-                onDismiss = { showReelCountExplainerDialog = false },
-                onEnableClick = {
-                    if (isPremium) {
-                        viewModel.setShowReelCount(true)
-                        showReelCountExplainerDialog = false
-                    } else {
-                        Toast.makeText(context, "Available for Premium users only", Toast.LENGTH_SHORT).show()
-                        onNavigateToSubscription()
-                        showReelCountExplainerDialog = false
-                    }
-                }
-            )
-        }
-        
-        if (showTargetScreenTimeDialog) {
-            TargetScreenTimeDialog(
-                currentValue = state.targetScreenTime,
-                onDismiss = { showTargetScreenTimeDialog = false },
-                onConfirm = { time ->
-                    viewModel.setTargetScreenTime(time)
-                    showTargetScreenTimeDialog = false
+        if (showTargetReelsDialog) {
+            TargetReelsDialog(
+                currentLimit = state.dailyReelLimit,
+                onDismiss = { showTargetReelsDialog = false },
+                onConfirm = { limit ->
+                    viewModel.setDailyReelLimit(limit)
+                    showTargetReelsDialog = false
                 }
             )
         }
@@ -629,75 +595,49 @@ fun SettingsScreen(
     }
 }
 
-private fun formatTargetScreenTime(sliderIndex: Float): String {
-    val index = sliderIndex.roundToInt().coerceIn(0, 36)
-    val totalMinutes = if (index <= 24) {
-        index * 15
-    } else {
-        360 + (index - 24) * 30
-    }
-    val h = totalMinutes / 60
-    val m = totalMinutes % 60
-    return when {
-        h == 0 && m == 0 -> "0m"
-        h == 0 -> "${m}m"
-        m == 0 -> "${h}h"
-        else -> "${h}h ${m}m"
-    }
-}
-
-private fun parseTargetScreenTimeToSliderValue(time: String): Float {
-    if (time == "0m") return 0f
-    
-    var h = 0
-    var m = 0
-    val parts = time.split(" ")
-    for (part in parts) {
-        if (part.endsWith("h")) h = part.dropLast(1).toIntOrNull() ?: 0
-        if (part.endsWith("m")) m = part.dropLast(1).toIntOrNull() ?: 0
-    }
-    
-    val totalMinutes = h * 60 + m
-    return if (totalMinutes <= 360) {
-        (totalMinutes / 15f)
-    } else {
-        24f + ((totalMinutes - 360) / 30f)
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TargetScreenTimeDialog(
-    currentValue: String,
+private fun TargetReelsDialog(
+    currentLimit: Int,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (Int) -> Unit
 ) {
-    val initialValue = parseTargetScreenTimeToSliderValue(currentValue)
-    var sliderValue by remember { mutableFloatStateOf(initialValue) }
-    
-    val index = sliderValue.roundToInt().coerceIn(0, 36)
-    val fraction = index / 36f
-    val formattedTime = formatTargetScreenTime(sliderValue)
+    val presetValues = listOf(10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 750, 1000)
+    val initialIndex = presetValues.indexOf(currentLimit).takeIf { it >= 0 }
+        ?: presetValues.indexOf(presetValues.minByOrNull { kotlin.math.abs(it - currentLimit) } ?: 200)
+
+    var sliderValue by remember { mutableFloatStateOf(initialIndex.toFloat()) }
+    var isCustom by remember { mutableStateOf(currentLimit !in presetValues) }
+    var customLimitText by remember { mutableStateOf(if (currentLimit !in presetValues) currentLimit.toString() else "") }
+
+    val index = sliderValue.roundToInt().coerceIn(0, presetValues.size - 1)
+    val fraction = index / (presetValues.size - 1).toFloat()
+    val selectedReels = if (isCustom) {
+        customLimitText.toIntOrNull() ?: currentLimit
+    } else {
+        presetValues[index]
+    }
 
     // Colors
-    val sliderStartColor = Color(0xFF00E5FF)
-    val sliderMidColor = Color(0xFF99F2FF)
+    val sliderStartColor = Amber500
+    val sliderMidColor = Color(0xFFFFD54F)
     val sliderEndColor = Color(0xFFFFFFFF)
 
-    val currentColor = if (index <= 24) {
-        val f = index / 24f
+    val currentColor = if (fraction <= 0.5f) {
+        val f = fraction / 0.5f
         androidx.compose.ui.graphics.lerp(sliderStartColor, sliderMidColor, f)
     } else {
-        val f = (index - 24) / 12f
+        val f = (fraction - 0.5f) / 0.5f
         androidx.compose.ui.graphics.lerp(sliderMidColor, sliderEndColor, f)
     }
 
-    var prevIndex by remember { mutableIntStateOf(index) }
+    var prevReels by remember { mutableIntStateOf(selectedReels) }
     val scale = remember { Animatable(1f) }
 
-    LaunchedEffect(index) {
-        val increased = index > prevIndex
-        prevIndex = index
+    LaunchedEffect(selectedReels) {
+        val increased = selectedReels > prevReels
+        prevReels = selectedReels
         if (increased) {
             scale.animateTo(
                 targetValue = 1.25f,
@@ -723,39 +663,48 @@ private fun TargetScreenTimeDialog(
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Hour display
-                val currentTextSize = (32f + (fraction * 16f)).sp
+                // Reels display
+                val currentTextSize = (36f + (fraction * 12f)).sp
                 Box(
                     modifier = Modifier
-                        .height(80.dp)
+                        .height(84.dp)
                         .scale(scale.value),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = formattedTime,
-                        color = currentColor,
-                        fontFamily = AppFontFamily,
-                        fontSize = currentTextSize,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$selectedReels",
+                            color = currentColor,
+                            fontFamily = AppFontFamily,
+                            fontSize = currentTextSize,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (selectedReels == 1) "reel per day" else "reels per day",
+                            color = TextSecondary,
+                            fontFamily = AppFontFamily,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // Hour markers
+                // Reel markers
                 androidx.compose.ui.layout.Layout(
                     content = {
-                        Text("0m", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                        Text("3h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                        Text("6h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
-                        Text("12h", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                        Text("10", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                        Text("100", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                        Text("250", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                        Text("500", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
+                        Text("1k", color = TextMuted, fontFamily = AppFontFamily, fontSize = 12.sp)
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp)
                 ) { measurables, constraints ->
                     val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
                     layout(constraints.maxWidth, placeables.maxOf { it.height }) {
                         val width = constraints.maxWidth
-                        val fractions = listOf(0f, 12f / 36f, 24f / 36f, 1f)
+                        val fractions = listOf(0f, 4f / 12f, 7f / 12f, 10f / 12f, 1f)
                         placeables.forEachIndexed { i, placeable ->
                             val x = (width * fractions[i] - placeable.width / 2f).roundToInt()
                             placeable.placeRelative(x = x, y = 0)
@@ -772,15 +721,16 @@ private fun TargetScreenTimeDialog(
                     activeTickColor = Color.Transparent,
                     inactiveTickColor = Color.Transparent
                 )
-                Slider(
-                    value = sliderValue,
-                    onValueChange = { sliderValue = it },
-                    valueRange = 0f..36f,
-                    steps = 35,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = sliderColors,
+                if (!isCustom) {
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { sliderValue = it },
+                        valueRange = 0f..12f,
+                        steps = 11,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = sliderColors,
                     track = { sliderState ->
-                        val trackFraction = (sliderState.value / 36f).coerceIn(0f, 1f)
+                        val trackFraction = (sliderState.value / 12f).coerceIn(0f, 1f)
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -796,11 +746,7 @@ private fun TargetScreenTimeDialog(
                                         .clip(CircleShape)
                                         .background(
                                             Brush.horizontalGradient(
-                                                colors = if (index <= 24) {
-                                                    listOf(sliderStartColor, currentColor)
-                                                } else {
-                                                    listOf(sliderStartColor, sliderMidColor, currentColor)
-                                                }
+                                                colors = listOf(sliderStartColor, currentColor)
                                             )
                                         )
                                 )
@@ -808,10 +754,60 @@ private fun TargetScreenTimeDialog(
                         }
                     }
                 )
+                } else {
+                    OutlinedTextField(
+                        value = customLimitText,
+                        onValueChange = { input ->
+                            if (input.all { it.isDigit() } && input.length <= 5) {
+                                customLimitText = input
+                            }
+                        },
+                        label = { Text("Custom reels amount") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Amber500,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = {
+                        isCustom = !isCustom
+                        if (!isCustom) {
+                            val parsed = customLimitText.toIntOrNull() ?: 200
+                            val closestIdx = presetValues.indexOf(presetValues.minByOrNull { kotlin.math.abs(it - parsed) } ?: 200)
+                            sliderValue = closestIdx.toFloat()
+                        } else {
+                            customLimitText = selectedReels.toString()
+                        }
+                    }
+                ) {
+                    Text(
+                        text = if (isCustom) "Use presets slider" else "Enter custom amount",
+                        color = Amber500,
+                        fontSize = 13.sp,
+                        fontFamily = AppFontFamily
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(formattedTime) }) {
+            TextButton(
+                onClick = {
+                    val finalLimit = if (isCustom) {
+                        customLimitText.toIntOrNull()?.coerceAtLeast(1) ?: selectedReels
+                    } else {
+                        selectedReels
+                    }
+                    onConfirm(finalLimit)
+                }
+            ) {
                 Text("Save", color = Amber500, fontFamily = AppFontFamily)
             }
         },

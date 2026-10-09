@@ -398,7 +398,7 @@ class BillingRepository @Inject constructor(
 
         if (anyPurchased) {
             settingsDataStore.setIsPremium(true)
-            _purchaseState.value = BillingPurchaseState.Success("Welcome to FlowShift Pro!")
+            _purchaseState.value = BillingPurchaseState.Success("Welcome to ReelsRot Pro!")
         } else if (hasPending) {
             _purchaseState.value = BillingPurchaseState.Success("Purchase pending. Pro features will unlock once payment completes.")
         }

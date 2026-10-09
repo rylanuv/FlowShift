@@ -16,6 +16,7 @@ android {
         targetSdk = 36
         versionCode = 11
         versionName = "1.1"
+                ""
     }
 
     buildTypes {

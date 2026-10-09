@@ -10,7 +10,7 @@ val Purple40 = Color(0xFF6650a4)
 val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
 
-// FlowShift Amber/Black Premium Theme
+// ReelsRot Amber/Black Premium Theme
 val Amber500 = Color(0xFFF59E0B)
 val Amber600 = Color(0xFFD97706)
 val Amber700 = Color(0xFFB45309)
@@ -35,9 +35,9 @@ val OrangeGlow = Color(0x26F59E0B)            // 15% alpha amber for icon backgr
 
 // Mode-specific accent colors
 val ModeEasyAccent = Amber500                 // Reuses existing amber
-val ModeStrictAccent = Color(0xFFFF6B35)      // Vivid orange
+val ModeStrictAccent = Color(0xFF47FDFD)      // Aqua for challenge mode
 val ModeHardcoreAccent = Color(0xFFEF4444)    // Red
 val ModeEasyBg = Color(0x14F59E0B)            // 8% alpha amber
-val ModeStrictBg = Color(0x14FF6B35)          // 8% alpha orange
+val ModeStrictBg = Color(0x1447FDFD)          // 8% alpha aqua
 val ModeHardcoreBg = Color(0x14EF4444)        // 8% alpha red
 

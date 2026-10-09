@@ -8,8 +8,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
@@ -26,17 +27,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.flow.shift.core.datastore.SettingsDataStore
 import com.flow.shift.feature.appselection.AppSelectionScreen
 import com.flow.shift.feature.dashboard.DashboardScreen
-import com.flow.shift.feature.modes.EasyModeSettingsScreen
-import com.flow.shift.feature.modes.DisciplineModeSettingsScreen
 import com.flow.shift.feature.modes.HardcoreModeSettingsScreen
-import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.feature.modes.ModesScreen
+import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.feature.onboarding.OnboardingScreen
 import com.flow.shift.feature.settings.SettingsScreen
 import com.flow.shift.feature.subscription.SubscriptionScreen
 import com.flow.shift.feature.statistics.StatisticsScreen
 import com.flow.shift.feature.settings.TroubleshootScreen
-import com.flow.shift.theme.FlowShiftTheme
+import com.flow.shift.theme.ReelsRotTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import androidx.compose.foundation.layout.Box
@@ -70,7 +69,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         setContent {
-            FlowShiftTheme {
+            ReelsRotTheme {
                 val isOnboardingCompleted by settingsDataStore.isOnboardingCompleted.collectAsStateWithLifecycle(initialValue = null)
                 
                 if (isOnboardingCompleted != null) {
@@ -79,9 +78,9 @@ class MainActivity : ComponentActivity() {
                             val serviceIntent = Intent(this@MainActivity, AppTrackingService::class.java)
                             ContextCompat.startForegroundService(this@MainActivity, serviceIntent)
                         }
-                        FlowShiftApp(startDestination = "main", settingsDataStore = settingsDataStore)
+                        ReelsRotApp(startDestination = "main", settingsDataStore = settingsDataStore)
                     } else {
-                        FlowShiftApp(startDestination = "onboarding", settingsDataStore = settingsDataStore)
+                        ReelsRotApp(startDestination = "onboarding", settingsDataStore = settingsDataStore)
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A0A)))
@@ -100,7 +99,7 @@ class MainActivity : ComponentActivity() {
 
 
 @Composable
-fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsDataStore? = null) {
+fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDataStore? = null) {
     val navController = rememberNavController()
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -120,7 +119,7 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
         blockSettingsAccess && (settingsUnlockInitiatedAt == 0L || now - settingsUnlockInitiatedAt < ONE_DAY_MILLIS)
     }
 
-    val pagerState = rememberPagerState(initialPage = 0, pageCount = { if (isSettingsLocked) 2 else 3 })
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { if (isSettingsLocked) 3 else 4 })
     
     var showSettingsBlockedDialog by remember { mutableStateOf(false) }
 
@@ -181,15 +180,16 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
     Scaffold(
         bottomBar = {
             // Only show bottom bar on main screen or individual legacy tabs
-            if (currentRoute == "main" || currentRoute in listOf("dashboard", "modes", "settings")) {
+            if (currentRoute == "main" || currentRoute in listOf("dashboard", "modes", "stats", "settings")) {
                 NavigationBar(
                     containerColor = Color(0xFF0A0A0A),
                     contentColor = Color.White
                 ) {
                     val items = listOf(
                         Triple(0, "Home", Icons.Default.Home),
-                        Triple(1, "Modes", Icons.Default.Shield),
-                        Triple(2, "Settings", Icons.Default.Settings)
+                        Triple(1, "Block type", Icons.Default.Layers),
+                        Triple(2, "Stats", Icons.Default.BarChart),
+                        Triple(3, "Settings", Icons.Default.Settings)
                     )
                     
                     items.forEach { (index, label, icon) ->
@@ -198,7 +198,7 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                             label = { Text(label, fontSize = 10.sp) },
                             selected = pagerState.currentPage == index && currentRoute == "main",
                             onClick = {
-                                if (index == 2 && blockSettingsAccess) {
+                                if (index == 3 && blockSettingsAccess) {
                                     val now = System.currentTimeMillis()
                                     val ONE_DAY_MILLIS = 24 * 60 * 60 * 1000L
                                     if (settingsUnlockInitiatedAt == 0L || now - settingsUnlockInitiatedAt < ONE_DAY_MILLIS) {
@@ -249,7 +249,7 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                             contentScale = ContentScale.Crop,
                             alpha = currentMode.backgroundAlpha
                         )
-                        .background(SurfaceBlack.copy(alpha = 0.25f))
+                        .background(SurfaceBlack.copy(alpha = 0.35f))
                 ) {
                     HorizontalPager(
                         state = pagerState,
@@ -264,17 +264,22 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                                         pagerState.animateScrollToPage(1)
                                     }
                                 },
-                                onNavigateToEasyModeSettings = { navController.navigate("easyModeSettings") },
-                                onNavigateToDisciplineModeSettings = { navController.navigate("disciplineModeSettings") },
-                                onNavigateToHardcoreModeSettings = { navController.navigate("hardcoreModeSettings") },
-                                onNavigateToStats = { navController.navigate("stats") },
+                                onNavigateToStats = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(2)
+                                    }
+                                },
                                 onNavigateToSubscription = { navController.navigate("subscription") }
                             )
                             1 -> ModesScreen(
                                 showBackground = false,
-                                onNavigateToDisciplineModeSettings = { navController.navigate("disciplineModeSettings") }
+                                onNavigateToEasyModeSettings = { navController.navigate("easyModeSettings") },
+                                onNavigateToSubscription = { navController.navigate("subscription") }
                             )
-                            2 -> SettingsScreen(
+                            2 -> StatisticsScreen(
+                                showBackground = false
+                            )
+                            3 -> SettingsScreen(
                                 showBackground = false,
                                 onNavigateToAppSelection = { navController.navigate("appSelection") },
                                 onNavigateToSubscription = { navController.navigate("subscription") },
@@ -289,9 +294,6 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
                     showBackground = true,
                     onNavigateToApps = { navController.navigate("appSelection") },
                     onNavigateToModes = { navController.navigate("modes") },
-                    onNavigateToEasyModeSettings = { navController.navigate("easyModeSettings") },
-                    onNavigateToDisciplineModeSettings = { navController.navigate("disciplineModeSettings") },
-                    onNavigateToHardcoreModeSettings = { navController.navigate("hardcoreModeSettings") },
                     onNavigateToStats = { navController.navigate("stats") },
                     onNavigateToSubscription = { navController.navigate("subscription") }
                 )
@@ -299,17 +301,7 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
             composable("modes") {
                 ModesScreen(
                     showBackground = true,
-                    onNavigateToDisciplineModeSettings = { navController.navigate("disciplineModeSettings") }
-                )
-            }
-            composable("easyModeSettings") {
-                EasyModeSettingsScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-            composable("disciplineModeSettings") {
-                DisciplineModeSettingsScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToEasyModeSettings = { navController.navigate("easyModeSettings") },
                     onNavigateToSubscription = { navController.navigate("subscription") }
                 )
             }
@@ -333,6 +325,7 @@ fun FlowShiftApp(startDestination: String = "main", settingsDataStore: SettingsD
             }
             composable("stats") {
                 StatisticsScreen(
+                    showBackground = true,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

@@ -1299,7 +1299,7 @@ private fun SquatPoseOverlay(
         landmarks.forEach { landmark ->
             if (landmark.inFrameLikelihood > MIN_LANDMARK_CONFIDENCE) {
                 drawCircle(
-                    color = Color.Yellow,
+                    color = Color(0xFF47FDFD),
                     radius = 6f,
                     center = landmarkOffset(landmark)
                 )

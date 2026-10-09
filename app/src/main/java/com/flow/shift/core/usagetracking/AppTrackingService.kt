@@ -18,7 +18,6 @@ import com.flow.shift.core.database.InterventionEntity
 import com.flow.shift.core.database.WorkoutSessionDao
 import com.flow.shift.core.datastore.SettingsDataStore
 import com.flow.shift.feature.exerciseblocker.BlockerActivity
-import com.flow.shift.feature.exerciseblocker.WaitActivity
 import com.flow.shift.feature.modes.BlockingMode
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -89,7 +88,7 @@ class AppTrackingService : Service() {
                     if (autoDowngrade) {
                         val currentModeStr = settingsDataStore.blockingMode.first()
                         val currentMode = BlockingMode.fromString(currentModeStr)
-                        if (currentMode != BlockingMode.EASY) {
+                        if (true) {
                             val lastAutoTime = settingsDataStore.lastAutoDowngradeTimeMillis.first()
                             val now = System.currentTimeMillis()
                             
@@ -105,7 +104,7 @@ class AppTrackingService : Service() {
 
                             if (shouldDowngrade) {
                                 val targetModeStr = settingsDataStore.downgradeRequestTarget.first()
-                                val targetMode = targetModeStr?.let { BlockingMode.fromString(it) } ?: BlockingMode.EASY
+                                val targetMode = targetModeStr?.let { BlockingMode.fromString(it) } ?: BlockingMode.STRICT
                                 android.util.Log.d("AppTracking", "Auto downgrading to $targetMode at midnight")
                                 settingsDataStore.setBlockingMode(targetMode.name)
                                 settingsDataStore.setLastDowngradeTime(now)
@@ -204,11 +203,6 @@ class AppTrackingService : Service() {
                 }
 
                 val intent = when (blockingMode) {
-                    BlockingMode.EASY -> Intent(this, WaitActivity::class.java).apply {
-                        putExtra("TARGET_PACKAGE", packageName)
-                        putExtra("WAIT_SECONDS", 90)
-                        putExtra("BREAK_DURATION_MINUTES", breakDurationMinutes)
-                    }
                     BlockingMode.STRICT -> Intent(this, BlockerActivity::class.java).apply {
                         putExtra("TARGET_PACKAGE", packageName)
                         putExtra("REQUIRED_REPS", challengeAmount)
@@ -296,7 +290,7 @@ class AppTrackingService : Service() {
         }
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("FlowShift is active")
+            .setContentTitle("ReelsRot is active")
             .setContentText("Guarding your focus...")
             .setSmallIcon(android.R.drawable.ic_secure) // Replace with your app's icon
             .setOngoing(true)

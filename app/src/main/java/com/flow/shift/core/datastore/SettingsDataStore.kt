@@ -98,6 +98,7 @@ class SettingsDataStore @Inject constructor(
         // Reel Count
         val REEL_COUNT_TODAY = intPreferencesKey("reel_count_today")
         val REEL_COUNT_DATE_MILLIS = longPreferencesKey("reel_count_date_millis")
+        val DAILY_REEL_LIMIT = intPreferencesKey("daily_reel_limit")
     }
 
     // ── Existing Flows ──
@@ -236,6 +237,7 @@ class SettingsDataStore @Inject constructor(
 
     val reelCountToday: Flow<Int> = dataStore.data.map { it[REEL_COUNT_TODAY] ?: 0 }
     val reelCountDateMillis: Flow<Long> = dataStore.data.map { it[REEL_COUNT_DATE_MILLIS] ?: 0L }
+    val dailyReelLimit: Flow<Int> = dataStore.data.map { it[DAILY_REEL_LIMIT] ?: 200 }
 
     // ── Challenge Flows ──
     val challengeDifficulty: Flow<String> = dataStore.data.map { it[CHALLENGE_DIFFICULTY] ?: "Medium" }
@@ -454,6 +456,7 @@ class SettingsDataStore @Inject constructor(
     suspend fun setDailyScreenTime(time: String) { dataStore.edit { it[DAILY_SCREEN_TIME] = time } }
     suspend fun setTargetScreenTime(time: String) { dataStore.edit { it[TARGET_SCREEN_TIME] = time } }
     suspend fun setTargetScreenTimeLockedUntil(timeMillis: Long) { dataStore.edit { it[TARGET_SCREEN_TIME_LOCKED_UNTIL] = timeMillis } }
+    suspend fun setDailyReelLimit(limit: Int) { dataStore.edit { it[DAILY_REEL_LIMIT] = limit } }
 
     // ── Focus Mode ──
     val focusModeUntilMillis: Flow<Long> = dataStore.data.map { it[FOCUS_MODE_UNTIL_MILLIS] ?: 0L }
