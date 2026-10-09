@@ -5,7 +5,7 @@ import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.flow.shift.core.database.BlockedAppDao
-import com.flow.shift.core.database.FlowShiftDatabase
+import com.flow.shift.core.database.ReelsRotDatabase
 import com.flow.shift.core.database.InterventionDao
 import com.flow.shift.core.database.ReelEventDao
 import com.flow.shift.core.database.UserGamificationDao
@@ -58,38 +58,38 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): FlowShiftDatabase {
+    fun provideDatabase(@ApplicationContext context: Context): ReelsRotDatabase {
         return Room.databaseBuilder(
             context,
-            FlowShiftDatabase::class.java,
-            "flowshift_db"
+            ReelsRotDatabase::class.java,
+            "reelsrot_db"
         )
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 
     @Provides
-    fun provideBlockedAppDao(database: FlowShiftDatabase): BlockedAppDao {
+    fun provideBlockedAppDao(database: ReelsRotDatabase): BlockedAppDao {
         return database.blockedAppDao()
     }
 
     @Provides
-    fun provideWorkoutSessionDao(database: FlowShiftDatabase): WorkoutSessionDao {
+    fun provideWorkoutSessionDao(database: ReelsRotDatabase): WorkoutSessionDao {
         return database.workoutSessionDao()
     }
 
     @Provides
-    fun provideUserGamificationDao(database: FlowShiftDatabase): UserGamificationDao {
+    fun provideUserGamificationDao(database: ReelsRotDatabase): UserGamificationDao {
         return database.userGamificationDao()
     }
 
     @Provides
-    fun provideInterventionDao(database: FlowShiftDatabase): InterventionDao {
+    fun provideInterventionDao(database: ReelsRotDatabase): InterventionDao {
         return database.interventionDao()
     }
 
     @Provides
-    fun provideReelEventDao(database: FlowShiftDatabase): ReelEventDao {
+    fun provideReelEventDao(database: ReelsRotDatabase): ReelEventDao {
         return database.reelEventDao()
     }
 }

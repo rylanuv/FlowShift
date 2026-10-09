@@ -16,7 +16,7 @@ import androidx.room.TypeConverters
     exportSchema = true
 )
 @TypeConverters(Converters::class)
-abstract class FlowShiftDatabase : RoomDatabase() {
+abstract class ReelsRotDatabase : RoomDatabase() {
     abstract fun blockedAppDao(): BlockedAppDao
     abstract fun workoutSessionDao(): WorkoutSessionDao
     abstract fun userGamificationDao(): UserGamificationDao

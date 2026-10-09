@@ -11,7 +11,7 @@ import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
 @HiltAndroidApp
-class FlowShiftApplication : Application(), Configuration.Provider {
+class ReelsRotApplication : Application(), Configuration.Provider {
     
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
@@ -34,7 +34,7 @@ class FlowShiftApplication : Application(), Configuration.Provider {
                 val serviceIntent = Intent(this, AppTrackingService::class.java)
                 ContextCompat.startForegroundService(this, serviceIntent)
             } catch (e: Exception) {
-                Log.e("FlowShiftApp", "Failed to restart AppTrackingService on Application create", e)
+                Log.e("ReelsRotApp", "Failed to restart AppTrackingService on Application create", e)
             }
         }
     }

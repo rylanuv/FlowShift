@@ -34,7 +34,7 @@ class BootReceiver : BroadcastReceiver() {
             "settings_boot_check",
             Context.MODE_PRIVATE
         )
-        // We write this flag from FlowShiftApplication / OnboardingViewModel when onboarding completes.
+        // We write this flag from ReelsRotApplication / OnboardingViewModel when onboarding completes.
         val isOnboardingCompleted = prefs.getBoolean("is_onboarding_completed", false)
 
         if (!isOnboardingCompleted) {
