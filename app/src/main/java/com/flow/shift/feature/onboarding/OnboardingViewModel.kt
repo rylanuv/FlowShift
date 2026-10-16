@@ -1,6 +1,10 @@
 package com.flow.shift.feature.onboarding
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import com.flow.shift.core.designsystem.preloadAppIcon
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -33,7 +37,7 @@ class OnboardingViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        const val TOTAL_STEPS = 7
+        const val TOTAL_STEPS = 5
     }
 
     // ── Navigation ──
@@ -44,7 +48,7 @@ class OnboardingViewModel @Inject constructor(
     private val _selectedScreenTime = MutableStateFlow<Float?>(savedStateHandle.get<Float>("selectedScreenTime"))
     val selectedScreenTime: StateFlow<Float?> = _selectedScreenTime.asStateFlow()
 
-    val presetValues = listOf(25, 50, 75, 100, 150, 200, 300)
+    val presetValues = listOf(25, 50, 75, 100, 150, 200, 300, 500)
     private val _selectedDailyLimit = MutableStateFlow(savedStateHandle.get<Int>("selectedDailyLimit") ?: 200)
     val selectedDailyLimit: StateFlow<Int> = _selectedDailyLimit.asStateFlow()
     private val _isCustomLimit = MutableStateFlow(savedStateHandle.get<Boolean>("isCustomLimit") ?: false)
@@ -58,7 +62,7 @@ class OnboardingViewModel @Inject constructor(
 
     // ── Step 4: Mode Selection ──
     private val _selectedMode = MutableStateFlow(
-        savedStateHandle.get<String>("selectedMode")?.let { BlockingMode.valueOf(it) } ?: BlockingMode.EASY
+        savedStateHandle.get<String>("selectedMode")?.let { BlockingMode.valueOf(it) } ?: BlockingMode.STRICT
     )
     val selectedMode: StateFlow<BlockingMode> = _selectedMode.asStateFlow()
 
@@ -101,7 +105,7 @@ class OnboardingViewModel @Inject constructor(
     }.flowOn(Dispatchers.Default)
     .stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -111,7 +115,7 @@ class OnboardingViewModel @Inject constructor(
     }.flowOn(Dispatchers.Default)
     .stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -121,7 +125,7 @@ class OnboardingViewModel @Inject constructor(
     }.flowOn(Dispatchers.Default)
     .stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 
@@ -133,7 +137,7 @@ class OnboardingViewModel @Inject constructor(
         saved.count { it.isEnabled }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.Eagerly,
         initialValue = 0
     )
 
@@ -144,20 +148,40 @@ class OnboardingViewModel @Inject constructor(
     private fun loadInstalledApps() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
-            val packages = pm.getInstalledApplications(0)
-
-            val apps = packages.filter {
-                pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != context.packageName
-            }.map {
-                OnboardingAppItem(
-                    packageName = it.packageName,
-                    appName = pm.getApplicationLabel(it).toString(),
-                    isBlocked = false
-                )
+            val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
             }
+            val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.queryIntentActivities(
+                    launcherIntent,
+                    PackageManager.ResolveInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                pm.queryIntentActivities(launcherIntent, 0)
+            }
+
+            val apps = resolveInfos
+                .filter { it.activityInfo.packageName != context.packageName }
+                .distinctBy { it.activityInfo.packageName }
+                .map { resolveInfo ->
+                    val appName = runCatching { resolveInfo.loadLabel(pm).toString() }.getOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: resolveInfo.activityInfo.packageName
+                    OnboardingAppItem(
+                        packageName = resolveInfo.activityInfo.packageName,
+                        appName = appName,
+                        isBlocked = false
+                    )
+                }
 
             _installedApps.value = apps
             _isLoadingApps.value = false
+
+            // Preload icons for social/top apps so they render instantaneously without flicker
+            val topApps = apps.filter { AppSortingHelper.isSocialOrTopApp(it.packageName, it.appName) }
+            for (app in topApps) {
+                preloadAppIcon(context, app.packageName)
+            }
         }
     }
 

@@ -8,6 +8,7 @@
 ## Permissions
 - Do NOT request unnecessary permissions. Only ask for write/execute access when the task explicitly requires it.
 - If the user asks a question or wants an explanation, just answer — don't request file access or tool permissions you won't need.
+- Do NOT run `gradlew`, `gradle`, or any build/compile commands (e.g. `gradlew build`, `gradlew assembleDebug`, `gradlew assembleRelease`) unless the user explicitly asks you to build or compile the app.
 
 ## General
 - Be concise and targeted in your approach. Identify the minimal set of files needed before acting.

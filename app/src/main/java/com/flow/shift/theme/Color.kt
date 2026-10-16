@@ -1,6 +1,15 @@
 package com.flow.shift.theme
 
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+
+// Glass border brush for premium card edges
+val GlassBorderBrush = Brush.linearGradient(
+    colors = listOf(
+        Color.White.copy(alpha = 0.30f),
+        Color.White.copy(alpha = 0.10f)
+    )
+)
 
 val Purple80 = Color(0xFFD0BCFF)
 val PurpleGrey80 = Color(0xFFCCC2DC)
@@ -34,10 +43,10 @@ val SurfaceCardDarker = Color(0xFF0D0D0D)
 val OrangeGlow = Color(0x26F59E0B)            // 15% alpha amber for icon backgrounds
 
 // Mode-specific accent colors
-val ModeEasyAccent = Amber500                 // Reuses existing amber
-val ModeStrictAccent = Color(0xFF47FDFD)      // Aqua for challenge mode
+val ModeEasyAccent = Color(0xFF5ECCFF)         // Sky blue (unifies default/legacy with challenge mode)
+val ModeStrictAccent = Color(0xFF5ECCFF)      // Sky blue for challenge mode (#5ECCFF)
 val ModeHardcoreAccent = Color(0xFFEF4444)    // Red
-val ModeEasyBg = Color(0x14F59E0B)            // 8% alpha amber
-val ModeStrictBg = Color(0x1447FDFD)          // 8% alpha aqua
-val ModeHardcoreBg = Color(0x14EF4444)        // 8% alpha red
+val ModeEasyBg = Color(0x225ECCFF)            // 13.5% alpha sky blue
+val ModeStrictBg = Color(0x225ECCFF)          // 13.5% alpha sky blue
+val ModeHardcoreBg = Color(0x22EF4444)        // 13.5% alpha red
 

@@ -1,6 +1,7 @@
 package com.flow.shift.feature.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +38,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import kotlin.math.roundToInt
@@ -52,6 +54,8 @@ fun SettingsScreen(
     onNavigateToAppSelection: () -> Unit,
     onNavigateToSubscription: () -> Unit,
     onNavigateToTroubleshoot: () -> Unit,
+    onNavigateToAccount: () -> Unit = {},
+    onNavigateBack: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     showBackground: Boolean = false
 ) {
@@ -59,6 +63,11 @@ fun SettingsScreen(
     val isPremium by viewModel.isPremium.collectAsStateWithLifecycle()
     val blockingModeStr by viewModel.blockingMode.collectAsStateWithLifecycle()
     val currentMode = com.flow.shift.feature.modes.BlockingMode.fromString(blockingModeStr)
+    val modeAccent = when (currentMode) {
+        com.flow.shift.feature.modes.BlockingMode.EASY -> ModeEasyAccent
+        com.flow.shift.feature.modes.BlockingMode.STRICT -> ModeStrictAccent
+        com.flow.shift.feature.modes.BlockingMode.HARDCORE -> ModeHardcoreAccent
+    }
     
     var showTargetReelsDialog by remember { mutableStateOf(false) }
     var showLockTargetDialog by remember { mutableStateOf(false) }
@@ -90,6 +99,8 @@ fun SettingsScreen(
     }
 
     var showBlockSettingsWarning by remember { mutableStateOf(false) }
+    val authUser by viewModel.authUser.collectAsStateWithLifecycle()
+    val isSigningIn by viewModel.isSigningIn.collectAsStateWithLifecycle()
 
     Box(
         modifier = Modifier
@@ -102,7 +113,7 @@ fun SettingsScreen(
                             contentScale = ContentScale.Crop,
                             alpha = currentMode.backgroundAlpha
                         )
-                        .background(SurfaceBlack.copy(alpha = 0.25f))
+                        .background(SurfaceBlack.copy(alpha = 0.35f))
                 } else {
                     Modifier.background(Color.Transparent)
                 }
@@ -112,24 +123,43 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 20.dp)
         ) {
             Spacer(modifier = Modifier.height(20.dp))
 
             // ── Header ──
-            Box(
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             ) {
+                if (showBackground) {
+                    IconButton(
+                        onClick = onNavigateBack,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(1.dp, GlassBorderBrush, RoundedCornerShape(12.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                }
                 Column {
                     Text(
                         text = "Settings",
                         color = TextPrimary,
                         fontFamily = AppFontFamily,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-1).sp
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -141,16 +171,22 @@ fun SettingsScreen(
                 }
             }
 
-        Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
         // ── Advanced Protection ──
         SettingsSection(
             modifier = Modifier.fillMaxWidth(),
             icon = Icons.Default.Shield,
             title = "ADVANCED PROTECTION",
-            subtitle = "Keep you locked in"
+            subtitle = "Keep you locked in",
+            accentColor = modeAccent
         ) {
-            SettingsToggleRow(icon = Icons.Default.Delete, label = "Prevent App Uninstall", checked = state.protection.preventAppUninstall) { isChecked ->
+            SettingsToggleRow(
+                icon = Icons.Default.Delete,
+                label = "Prevent App Uninstall",
+                checked = state.protection.preventAppUninstall,
+                accentColor = modeAccent
+            ) { isChecked ->
                 if (isChecked) {
                     if (!devicePolicyManager.isAdminActive(componentName)) {
                         val intent = android.content.Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
@@ -169,7 +205,8 @@ fun SettingsScreen(
             SettingsToggleRow(
                 icon = Icons.Default.Settings,
                 label = "Block Settings Access",
-                checked = state.protection.blockSettingsAccess
+                checked = state.protection.blockSettingsAccess,
+                accentColor = modeAccent
             ) { isChecked ->
                 if (isChecked) {
                     showBlockSettingsWarning = true
@@ -182,18 +219,20 @@ fun SettingsScreen(
                 label = "Prevent Disabling Focus Mode",
                 checked = state.protection.preventDisablingFocusMode,
                 subtitle = "Cannot stop Focus Mode once started",
+                accentColor = modeAccent,
                 onCheckedChange = { viewModel.setPreventDisablingFocusMode(it) }
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // ── Block Type ──
         SettingsSection(
             modifier = Modifier.fillMaxWidth(),
             icon = Icons.Default.Block,
             title = "BLOCK TYPE",
-            subtitle = "What to block in apps"
+            subtitle = "What to block in apps",
+            accentColor = modeAccent
         ) {
             SegmentedControl(
                 options = listOf(
@@ -209,6 +248,7 @@ fun SettingsScreen(
                     )
                 ),
                 selectedOption = if (state.blockType == "REELS") "Reels Only" else "Whole App",
+                activeColor = modeAccent,
                 onOptionSelected = { 
                     if (it == "Reels Only") {
                         if (isPremium) {
@@ -224,20 +264,21 @@ fun SettingsScreen(
 
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // ── Target Reels Amount ──
         SettingsSection(
             modifier = Modifier.fillMaxWidth(),
             icon = Icons.Default.PlayCircle,
             title = "TARGET REELS AMOUNT",
-            subtitle = "Your daily goal"
+            subtitle = "Your daily goal",
+            accentColor = modeAccent
         ) {
             SettingsNavRow(
                 icon = Icons.Default.Flag,
                 label = "Daily Target",
                 value = "${state.dailyReelLimit} reels",
-                valueColor = Amber500,
+                valueColor = modeAccent,
                 onClick = {
                     if (System.currentTimeMillis() < state.targetScreenTimeLockedUntil && !state.bypassTargetLock) {
                         Toast.makeText(context, "Target is locked and cannot be adjusted", Toast.LENGTH_SHORT).show()
@@ -254,6 +295,7 @@ fun SettingsScreen(
                     if (state.targetScreenTimeLockedUntil == Long.MAX_VALUE) "Locked forever"
                     else "Locked until ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(state.targetScreenTimeLockedUntil))}"
                 } else "Prevent adjusting daily target",
+                accentColor = modeAccent,
                 onCheckedChange = { isChecked ->
                     if (isChecked) {
                         showLockTargetDialog = true
@@ -268,14 +310,15 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // ── Troubleshooting ──
         SettingsSection(
             modifier = Modifier.fillMaxWidth(),
             icon = Icons.Default.Build,
             title = "TROUBLESHOOTING",
-            subtitle = "Fix app issues"
+            subtitle = "Fix app issues",
+            accentColor = modeAccent
         ) {
             SettingsNavRow(
                 icon = Icons.Default.BugReport,
@@ -284,7 +327,7 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // ── Premium ──
         SettingsSection(
@@ -292,8 +335,7 @@ fun SettingsScreen(
             icon = Icons.Default.WorkspacePremium,
             title = "PREMIUM",
             subtitle = if (isPremium) "Your Pro membership is active" else "Unlock your full potential",
-            titleColor = if (isPremium) PremiumGold else Amber500,
-            iconColor = if (isPremium) PremiumGold else Amber500
+            accentColor = modeAccent
         ) {
             // Subscription status card
             Row(
@@ -304,22 +346,22 @@ fun SettingsScreen(
                         brush = if (isPremium) {
                             Brush.linearGradient(
                                 colors = listOf(
-                                    Color(0xFF2C220B), // Warm rich gold tint
-                                    Color(0xFF141005)
+                                    modeAccent.copy(alpha = 0.12f),
+                                    SurfaceCard.copy(alpha = 0.40f)
                                 )
                             )
                         } else {
                             Brush.linearGradient(
                                 colors = listOf(
-                                    SurfaceCardLight,
-                                    SurfaceCardDarker
+                                    SurfaceCard.copy(alpha = 0.5f),
+                                    SurfaceCard.copy(alpha = 0.25f)
                                 )
                             )
                         }
                     )
                     .border(
                         1.dp,
-                        if (isPremium) PremiumGold.copy(alpha = 0.5f) else SurfaceCardBorder,
+                        if (isPremium) SolidColor(modeAccent.copy(alpha = 0.35f)) else GlassBorderBrush,
                         RoundedCornerShape(16.dp)
                     )
                     .clickable(
@@ -339,12 +381,12 @@ fun SettingsScreen(
                             .size(42.dp)
                             .clip(CircleShape)
                             .background(
-                                if (isPremium) PremiumGold.copy(alpha = 0.15f)
+                                if (isPremium) modeAccent.copy(alpha = 0.15f)
                                 else Color.White.copy(alpha = 0.05f)
                             )
                             .border(
                                 1.dp,
-                                if (isPremium) PremiumGold.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.08f),
+                                if (isPremium) modeAccent.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.08f),
                                 CircleShape
                             ),
                         contentAlignment = Alignment.Center
@@ -352,7 +394,7 @@ fun SettingsScreen(
                         Icon(
                             imageVector = if (isPremium) Icons.Default.WorkspacePremium else Icons.Default.Lock,
                             contentDescription = null,
-                            tint = if (isPremium) PremiumGold else TextMuted,
+                            tint = if (isPremium) modeAccent else TextMuted,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -362,24 +404,23 @@ fun SettingsScreen(
                     Column {
                         Text(
                             text = if (isPremium) "ReelsRot Pro" else "Free Plan",
-                            color = if (isPremium) PremiumGold else TextPrimary,
+                            color = if (isPremium) modeAccent else TextPrimary,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
                             fontFamily = AppFontFamily
                         )
                         if (!isPremium) {
                             Spacer(modifier = Modifier.height(2.dp))
-                            Row(verticalAlignment = Alignment.Top) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
-                                        .padding(top = 5.dp)
                                         .size(6.dp)
                                         .clip(CircleShape)
                                         .background(TextMuted.copy(alpha = 0.5f))
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Not Subscribed • Tap to Upgrade",
+                                    text = "Tap to Upgrade",
                                     color = TextSecondary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
@@ -427,7 +468,7 @@ fun SettingsScreen(
                             .clip(RoundedCornerShape(10.dp))
                             .background(
                                 brush = Brush.horizontalGradient(
-                                    colors = listOf(Amber500, Color(0xFFFBBF24))
+                                    colors = listOf(modeAccent, modeAccent.copy(alpha = 0.8f))
                                 )
                             )
                             .padding(horizontal = 12.dp, vertical = 7.dp)
@@ -471,29 +512,31 @@ fun SettingsScreen(
                 ) {
                     Text(
                         text = "Upgrade to Pro",
-                        color = Amber500,
+                        color = modeAccent,
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = AppFontFamily
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowRight,
                         contentDescription = null,
-                        tint = Amber500,
+                        tint = modeAccent,
                         modifier = Modifier.size(16.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // ── Support ──
         SettingsSection(
             modifier = Modifier.fillMaxWidth(),
             icon = Icons.Default.Favorite,
             title = "SUPPORT",
-            subtitle = "Get help and support us"
+            subtitle = "Get help and support us",
+            accentColor = modeAccent
         ) {
             SettingsNavRow(
                 icon = Icons.Default.Star,
@@ -507,7 +550,7 @@ fun SettingsScreen(
                     }
                 }
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             SettingsNavRow(
                 icon = Icons.Default.Email,
                 label = "Send Feedback",
@@ -523,7 +566,7 @@ fun SettingsScreen(
                     }
                 }
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             SettingsNavRow(
                 icon = Icons.Default.Share,
                 label = "Share with friends",
@@ -537,6 +580,153 @@ fun SettingsScreen(
                 }
             )
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ── Account / Google Sign-In ──
+        SettingsSection(
+            modifier = Modifier.fillMaxWidth(),
+            icon = Icons.Default.AccountCircle,
+            title = "ACCOUNT",
+            subtitle = if (authUser != null) "Manage your account" else "Backup and sync your progress",
+            accentColor = modeAccent
+        ) {
+            if (authUser != null) {
+                val displayName = authUser?.displayName?.takeIf { it.isNotBlank() } ?: "Google User"
+                val initial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "G"
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SurfaceCardLight.copy(alpha = 0.5f))
+                        .border(1.dp, GlassBorderBrush, RoundedCornerShape(12.dp))
+                        .clickable { onNavigateToAccount() }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(modeAccent, modeAccent.copy(alpha = 0.6f))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = initial,
+                            color = Color.Black,
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Text(
+                        text = displayName,
+                        color = TextPrimary,
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_google_logo),
+                        contentDescription = "Google",
+                        modifier = Modifier.size(18.dp),
+                        tint = Color.Unspecified
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Account Settings",
+                        tint = TextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = "Sign in with Google to securely save your stats, streaks, and custom settings.",
+                    color = TextSecondary,
+                    fontFamily = AppFontFamily,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = {
+                        if (!isSigningIn) {
+                            viewModel.signInWithGoogle(context) { success, error ->
+                                if (success) {
+                                    Toast.makeText(context, "Signed in successfully!", Toast.LENGTH_SHORT).show()
+                                } else if (!error.isNullOrBlank()) {
+                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SurfaceCardLight.copy(alpha = 0.6f),
+                        contentColor = TextPrimary
+                    ),
+                    border = BorderStroke(1.dp, GlassBorderBrush),
+                    elevation = ButtonDefaults.buttonElevation(
+                        defaultElevation = 0.dp,
+                        pressedElevation = 0.dp
+                    ),
+                    enabled = !isSigningIn
+                ) {
+                    if (isSigningIn) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = modeAccent,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Signing in...",
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_google_logo),
+                            contentDescription = "Google Logo",
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.Unspecified
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Sign in with Google",
+                            fontFamily = AppFontFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(40.dp))
     }
 
         if (showBlockSettingsWarning) {
@@ -575,6 +765,7 @@ fun SettingsScreen(
         if (showTargetReelsDialog) {
             TargetReelsDialog(
                 currentLimit = state.dailyReelLimit,
+                accentColor = modeAccent,
                 onDismiss = { showTargetReelsDialog = false },
                 onConfirm = { limit ->
                     viewModel.setDailyReelLimit(limit)
@@ -585,6 +776,7 @@ fun SettingsScreen(
         
         if (showLockTargetDialog) {
             LockTargetDurationDialog(
+                accentColor = modeAccent,
                 onDismiss = { showLockTargetDialog = false },
                 onConfirm = { durationMillis ->
                     viewModel.setTargetScreenTimeLockedUntil(durationMillis)
@@ -600,6 +792,7 @@ fun SettingsScreen(
 @Composable
 private fun TargetReelsDialog(
     currentLimit: Int,
+    accentColor: Color = ModeStrictAccent,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit
 ) {
@@ -620,8 +813,8 @@ private fun TargetReelsDialog(
     }
 
     // Colors
-    val sliderStartColor = Amber500
-    val sliderMidColor = Color(0xFFFFD54F)
+    val sliderStartColor = accentColor
+    val sliderMidColor = accentColor
     val sliderEndColor = Color(0xFFFFFFFF)
 
     val currentColor = if (fraction <= 0.5f) {
@@ -765,7 +958,7 @@ private fun TargetReelsDialog(
                         label = { Text("Custom reels amount") },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Amber500,
+                            focusedBorderColor = accentColor,
                             unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
                             focusedTextColor = TextPrimary,
                             unfocusedTextColor = TextPrimary
@@ -790,7 +983,7 @@ private fun TargetReelsDialog(
                 ) {
                     Text(
                         text = if (isCustom) "Use presets slider" else "Enter custom amount",
-                        color = Amber500,
+                        color = accentColor,
                         fontSize = 13.sp,
                         fontFamily = AppFontFamily
                     )
@@ -808,7 +1001,7 @@ private fun TargetReelsDialog(
                     onConfirm(finalLimit)
                 }
             ) {
-                Text("Save", color = Amber500, fontFamily = AppFontFamily)
+                Text("Save", color = accentColor, fontFamily = AppFontFamily)
             }
         },
         dismissButton = {
@@ -816,7 +1009,7 @@ private fun TargetReelsDialog(
                 Text("Cancel", color = TextSecondary, fontFamily = AppFontFamily)
             }
         },
-        containerColor = SurfaceBlack,
+        containerColor = SurfaceCard,
         titleContentColor = TextPrimary
     )
 }
@@ -824,6 +1017,7 @@ private fun TargetReelsDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LockTargetDurationDialog(
+    accentColor: Color = ModeStrictAccent,
     onDismiss: () -> Unit,
     onConfirm: (Long) -> Unit
 ) {
@@ -861,7 +1055,7 @@ private fun LockTargetDurationDialog(
                         RadioButton(
                             selected = selectedOption == value,
                             onClick = { selectedOption = value },
-                            colors = RadioButtonDefaults.colors(selectedColor = Amber500, unselectedColor = TextMuted)
+                            colors = RadioButtonDefaults.colors(selectedColor = accentColor, unselectedColor = TextMuted)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -879,11 +1073,11 @@ private fun LockTargetDurationDialog(
                 val durationMillis = if (selectedOption == -1) {
                     Long.MAX_VALUE
                 } else {
-                    System.currentTimeMillis() + selectedOption * 24L * 60L * 60L * 1000L
+                    System.currentTimeMillis() + selectedOption * 24L * 60L * 1000L * 60L
                 }
                 onConfirm(durationMillis)
             }) {
-                Text("Save", color = Amber500, fontFamily = AppFontFamily)
+                Text("Save", color = accentColor, fontFamily = AppFontFamily)
             }
         },
         dismissButton = {
@@ -891,7 +1085,7 @@ private fun LockTargetDurationDialog(
                 Text("Cancel", color = TextSecondary, fontFamily = AppFontFamily)
             }
         },
-        containerColor = SurfaceBlack,
+        containerColor = SurfaceCard,
         titleContentColor = TextPrimary
     )
 }
@@ -906,17 +1100,16 @@ private fun SettingsSection(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    titleColor: Color = Amber500,
-    iconColor: Color = Amber500,
-    backgroundColor: Color = SurfaceCard,
-    borderColor: Color = SurfaceCardBorder,
+    accentColor: Color = ModeStrictAccent,
+    titleColor: Color = accentColor,
+    iconColor: Color = accentColor,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceCard.copy(alpha = 0.7f)) // Glassy look
-            .border(1.dp, SurfaceCardBorder.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+            .background(SurfaceCard.copy(alpha = 0.35f))
+            .border(1.dp, GlassBorderBrush, RoundedCornerShape(20.dp))
             .padding(16.dp)
     ) {
         // Section header
@@ -962,18 +1155,19 @@ private fun SettingsSection(
 
 @Composable
 private fun ProBadge(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accentColor: Color = ModeStrictAccent
 ) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
-            .background(PremiumGold.copy(alpha = 0.15f))
-            .border(1.dp, PremiumGold.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .background(accentColor.copy(alpha = 0.15f))
+            .border(1.dp, accentColor.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
             .padding(horizontal = 5.dp, vertical = 1.5.dp)
     ) {
         Text(
             text = "PRO",
-            color = PremiumGold,
+            color = accentColor,
             fontSize = 9.sp,
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = 0.5.sp,
@@ -990,6 +1184,7 @@ private fun SettingsToggleRow(
     checked: Boolean,
     subtitle: String? = null,
     isLocked: Boolean = false,
+    accentColor: Color = ModeStrictAccent,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -1024,7 +1219,7 @@ private fun SettingsToggleRow(
                 )
                 if (isLocked) {
                     Spacer(modifier = Modifier.width(6.dp))
-                    ProBadge()
+                    ProBadge(accentColor = accentColor)
                 }
             }
             if (subtitle != null) {
@@ -1043,7 +1238,7 @@ private fun SettingsToggleRow(
             modifier = Modifier.scale(0.75f),
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = Amber500,
+                checkedTrackColor = accentColor,
                 uncheckedThumbColor = TextMuted,
                 uncheckedTrackColor = SurfaceCardDarker,
                 uncheckedBorderColor = Color.Transparent
@@ -1062,21 +1257,23 @@ private data class SegmentOption(
 private fun SegmentedControl(
     options: List<SegmentOption>,
     selectedOption: String,
+    activeColor: Color = ModeStrictAccent,
     onOptionSelected: (String) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceCardDarker)
+            .background(SurfaceCard.copy(alpha = 0.25f))
+            .border(1.dp, GlassBorderBrush, RoundedCornerShape(16.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         options.forEach { option ->
             val isSelected = selectedOption == option.text
-            val backgroundColor = if (isSelected) SurfaceCard else Color.Transparent
-            val contentColor = if (isSelected) Amber500 else TextSecondary
-            val borderModifier = if (isSelected) Modifier.border(1.dp, SurfaceCardBorder, RoundedCornerShape(12.dp)) else Modifier
+            val backgroundColor = if (isSelected) SurfaceCard.copy(alpha = 0.5f) else Color.Transparent
+            val contentColor = if (isSelected) activeColor else TextSecondary
+            val borderModifier = if (isSelected) Modifier.border(1.dp, GlassBorderBrush, RoundedCornerShape(12.dp)) else Modifier
 
             Row(
                 modifier = Modifier
@@ -1101,13 +1298,14 @@ private fun SegmentedControl(
                     color = contentColor,
                     fontSize = 13.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    fontFamily = AppFontFamily,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 if (option.isLocked) {
                     Spacer(modifier = Modifier.width(5.dp))
-                    ProBadge()
+                    ProBadge(accentColor = activeColor)
                 }
             }
         }
@@ -1115,11 +1313,11 @@ private fun SegmentedControl(
 }
 
 @Composable
-private fun SettingsNavRow(
+internal fun SettingsNavRow(
     icon: ImageVector? = null,
     label: String,
     value: String? = null,
-    valueColor: Color = Amber500,
+    valueColor: Color = ModeStrictAccent,
     onClick: () -> Unit = {}
 ) {
     Row(
@@ -1176,6 +1374,7 @@ private fun ChallengeCard(
     icon: ImageVector,
     label: String,
     selected: Boolean,
+    activeColor: Color = ModeStrictAccent,
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -1183,10 +1382,10 @@ private fun ChallengeCard(
         modifier = modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) SurfaceCardLight else SurfaceCardDarker)
+            .background(if (selected) SurfaceCard.copy(alpha = 0.5f) else SurfaceCard.copy(alpha = 0.2f))
             .border(
                 1.dp,
-                if (selected) Amber500 else SurfaceCardBorder,
+                if (selected) SolidColor(activeColor) else GlassBorderBrush,
                 RoundedCornerShape(12.dp)
             )
             .clickable { onClick() },
@@ -1196,7 +1395,7 @@ private fun ChallengeCard(
             Icon(
                 imageVector = Icons.Default.CheckCircle,
                 contentDescription = null,
-                tint = Amber500,
+                tint = activeColor,
                 modifier = Modifier
                     .size(14.dp)
                     .align(Alignment.TopEnd)
@@ -1210,13 +1409,14 @@ private fun ChallengeCard(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (selected) Amber500 else TextMuted,
+                tint = if (selected) activeColor else TextMuted,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = label,
                 color = TextPrimary,
+                fontFamily = AppFontFamily,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,

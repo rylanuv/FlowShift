@@ -79,6 +79,20 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         }
     }
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        val info = serviceInfo ?: android.accessibilityservice.AccessibilityServiceInfo()
+        info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_SCROLLED
+        info.feedbackType = android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_GENERIC
+        info.flags = android.accessibilityservice.AccessibilityServiceInfo.FLAG_DEFAULT or
+                android.accessibilityservice.AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
+                android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        info.notificationTimeout = 50L
+        this.serviceInfo = info
+    }
+
     private fun showOverlayTemporarily() {
         overlayFadeJob?.cancel()
         overlayFadeJob = serviceScope.launch {
@@ -202,7 +216,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             var isMainScroll = className.contains("RecyclerView") || className.contains("ViewPager") || 
                 className.contains("ScrollView") || className.contains("ListView") || 
                 className.contains("GridView") || className.contains("ViewGroup") || 
-                className.contains("FrameLayout")
+                className.contains("FrameLayout") || className.contains("View")
             
             var isExplicitShortsView = false
             var isCommentView = false
@@ -214,8 +228,10 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                     isCommentView = true
                 }
                 val isShortsId = isShortsContainerId(packageName, id) ||
-                    (packageName == "com.google.android.youtube" && id.contains("shorts")) ||
-                    (packageName == "com.zhiliaoapp.musically" && (id.contains("tiktok") || id.contains("vertical_view_pager"))) ||
+                    (packageName == "com.google.android.youtube" && (id.contains("shorts") || id.contains("reel"))) ||
+                    (packageName == "com.instagram.android" && (id.contains("clips") || id.contains("reel"))) ||
+                    (packageName == "com.zhiliaoapp.musically" && (id.contains("tiktok") || id.contains("vertical_view_pager") || id.contains("view_pager"))) ||
+                    (packageName == "com.facebook.katana" && (id.contains("reel") || id.contains("fb_shorts"))) ||
                     (packageName == "com.snapchat.android" && id.contains("spotlight"))
                 if (isShortsId) {
                     isMainScroll = true
@@ -231,6 +247,12 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                     }
                 }
                 scrollSource.recycle()
+            }
+
+            // In TikTok, all non-comment vertical scrolling is short-form reels
+            if (packageName == "com.zhiliaoapp.musically" && !isCommentView) {
+                isExplicitShortsView = true
+                isMainScroll = true
             }
 
             // If we're currently in shorts and the user is scrolling, keep the
@@ -314,6 +336,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                                     set(java.util.Calendar.MILLISECOND, 0)
                                 }.timeInMillis
                                 reelCount = settingsDataStore.incrementReelCount(startOfDay)
+                                android.util.Log.d("AppTracking", "Reel counted! App: $packageName, New count: $reelCount")
                                 try {
                                     reelEventDao.insertReelEvent(
                                         ReelEventEntity(
@@ -611,26 +634,23 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         var count = 0
         var found = false
         var isFullScreen = false
-        var isInSafeContext = false
+        var safeContextFound = false
         
         while (queue.isNotEmpty() && count < NODE_SCAN_LIMIT) {
             val node = queue.removeFirst()
             count++
             
             // Only consider nodes that are currently visible on the screen.
-            // This is the critical fix for "background" Reels continuing to block 
-            // when DMs or Profile fragments open on top.
             if (isVisibleInActiveWindow(node, rootNode)) {
                 val desc = node.contentDescription?.toString()?.lowercase() ?: ""
                 val id = node.viewIdResourceName?.toString()?.lowercase() ?: ""
                 val text = node.text?.toString()?.lowercase() ?: ""
                 
                 // 1. Check for Safe Contexts (Negative Markers)
-                // If we detect we are in DMs, Profile, Settings, etc., or on a safe navigation tab, abort immediately.
+                // Note safe context without prematurely aborting the search:
+                // If a full-screen Reel/Short player is actually active, it takes precedence.
                 if (isSafeContext(node, packageName, text, desc, id, rootNode)) {
-                    isInSafeContext = true
-                    node.recycle()
-                    break // Stop searching immediately, we are safe.
+                    safeContextFound = true
                 }
 
                 var isShorts = false
@@ -685,7 +705,7 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                             val nodeBounds = android.graphics.Rect()
                             node.getBoundsInScreen(nodeBounds)
                             
-                            val minHeightRatio = if (packageName == "com.instagram.android") 0.50f else 0.65f
+                            val minHeightRatio = if (packageName == "com.instagram.android") 0.45f else 0.65f
                             
                             if (nodeBounds.height() > screenHeight * minHeightRatio) {
                                 isShorts = true
@@ -710,52 +730,51 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                             desc.contains("use this sound") ||
                             desc.contains("shorts sound") ||
                             desc.contains("search shorts") ||
-                            desc.contains("shorts camera")
+                            desc.contains("shorts camera") ||
+                            desc.contains("shorts") ||
+                            id.contains("shorts") ||
+                            id.contains("reel")
                         ) {
                             isShorts = true
                             isFullScreen = true
                         }
                     }
                     if (packageName == "com.facebook.katana") {
-                        if (desc == "reels" || desc == "reel") {
+                        if (desc == "reels" || desc == "reel" || desc.contains("reels") || desc.contains("reel") || id.contains("fb_shorts") || id.contains("reels_video") || id.contains("short_video")) {
                             isShorts = true
+                            isFullScreen = true
                         }
                     }
                     if (packageName == "com.instagram.android") {
-                        // In full-screen Reels viewer, the title header at the top says "Reels".
-                        // Check that it's located in the top 15% of the screen so it doesn't match the bottom bar!
-                        if (text == "reels" || desc == "reels" || text == "reel" || desc == "reel") {
-                            val windowBounds = android.graphics.Rect()
-                            rootNode.getBoundsInScreen(windowBounds)
-                            if (windowBounds.height() > 0) {
-                                val nodeBounds = android.graphics.Rect()
-                                node.getBoundsInScreen(nodeBounds)
-                                if (nodeBounds.top < windowBounds.height() * 0.15f) {
-                                    isShorts = true
-                                    isFullScreen = true
-                                }
-                            }
+                        val isReelLabel = desc.contains("reel by") || desc.contains("reels by") || desc.contains("video by") ||
+                            desc.contains("watch full reel") || desc.contains("reel video") || desc.contains("reels viewer") ||
+                            desc.contains("original audio") || text.contains("original audio") || desc.contains("audio from") ||
+                            desc.contains("remix this reel") || desc.contains("use template") ||
+                            (text == "reels" || desc == "reels" || text == "reel" || desc == "reel") ||
+                            ((desc.contains("like") || desc.contains("liked")) && (id.contains("clips") || id.contains("reel") || desc.contains("reel")))
+                        
+                        if (isReelLabel) {
+                            isShorts = true
+                            isFullScreen = true
                         }
                     }
-                    if (packageName == "com.snapchat.android" && (text == "spotlight" || desc.contains("spotlight"))) {
-                        val windowBounds = android.graphics.Rect()
-                        rootNode.getBoundsInScreen(windowBounds)
-                        if (windowBounds.height() > 0) {
-                            val nodeBounds = android.graphics.Rect()
-                            node.getBoundsInScreen(nodeBounds)
-                            if (nodeBounds.top < windowBounds.height() * 0.15f) {
-                                isShorts = true
-                                isFullScreen = true
-                            }
+                    if (packageName == "com.zhiliaoapp.musically") {
+                        if (desc.contains("for you") || text.contains("for you") || desc.contains("following") ||
+                            id.contains("vertical_view_pager") || id.contains("view_pager") ||
+                            desc.contains("original sound") || desc.contains("sound -") || desc.contains("tiktok video")
+                        ) {
+                            isShorts = true
+                            isFullScreen = true
                         }
+                    }
+                    if (packageName == "com.snapchat.android" && (text == "spotlight" || desc.contains("spotlight") || id.contains("spotlight"))) {
+                        isShorts = true
+                        isFullScreen = true
                     }
                 }
                 
                 if (isShorts) {
                     found = true
-                    // We don't break immediately here because we want to exhaust the 
-                    // tree slightly more in case a safe context (like a bottom sheet DM) 
-                    // is layered over the Reels container.
                 }
             }
             
@@ -773,6 +792,9 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             queue.removeFirst().recycle()
         }
         
+        // Fullscreen active short-form player takes precedence over background tabs.
+        // Safe context only applies when no fullscreen reel is active.
+        val isInSafeContext = safeContextFound && (!found || !isFullScreen)
         if (isInSafeContext) {
             return ShortsDetectionResult(false, false, true)
         }
@@ -813,7 +835,14 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                    id.contains("reel_swipe") ||
                    id.contains("clips_item") ||
                    id.contains("clips_swipe") ||
-                   id.contains("clips_view_pager")
+                   id.contains("clips_view_pager") ||
+                   id.contains("root_clips") ||
+                   id.contains("clips_root") ||
+                   id.contains("layout_clips") ||
+                   id.contains("clips_action_button") ||
+                   id.contains("clips_author") ||
+                   id.contains("video_container") ||
+                   id.contains("media_root")
         }
         if (packageName == "com.google.android.youtube") {
             return id.contains("reel_recycler") ||
@@ -823,16 +852,21 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
                    id.contains("shorts_player") ||
                    id.contains("shorts_view_pager") ||
                    id.contains("reel_player_page") ||
-                   id.contains("reel_watch_pager")
+                   id.contains("reel_watch_pager") ||
+                   id.contains("shorts_pager") ||
+                   id.contains("shorts_recycler")
         }
         if (packageName == "com.facebook.katana") {
             return id.contains("fb_shorts") || 
                    id.contains("reels_video") ||
                    id.contains("reels_playback") ||
-                   id.contains("short_video")
+                   id.contains("short_video") ||
+                   id.contains("reels_tray")
         }
         if (packageName == "com.zhiliaoapp.musically") {
-            return id.contains("vertical_view_pager")
+            return id.contains("vertical_view_pager") ||
+                   id.contains("view_pager") ||
+                   id.contains("feed_view_pager")
         }
         if (packageName == "com.snapchat.android") {
             return id.contains("spotlight") || id.contains("content_container")
@@ -849,11 +883,10 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
         rootNode: AccessibilityNodeInfo
     ): Boolean {
         if (packageName == "com.instagram.android") {
-            // Direct Messages
+            // Direct Messages (only when inside an active message chat)
             if (text == "message..." || desc == "message..." || text == "type a message..." || desc == "type a message...") return true
             if (text == "direct" && id.contains("title")) return true
-            if (text == "new message" || desc == "new message" || text == "messages" || desc == "messages") return true
-            if (id.contains("direct_star") || id.contains("thread_title") || id.contains("message_content") || id.contains("row_thread")) return true
+            if (id.contains("direct_star") || id.contains("thread_title") || id.contains("message_content") || id.contains("row_thread") || id.contains("direct_text_input")) return true
 
             // Profile
             if (text == "edit profile" || desc == "edit profile") return true
@@ -861,91 +894,33 @@ class ScrollBlockerAccessibilityService : AccessibilityService() {
             if (desc.contains("profile tab, selected") || desc.contains("profile, selected")) return true
             if (id.contains("profile_tab") && (node.isSelected || desc.contains("selected"))) return true
 
-            // Search / Explore
-            if (text == "search" && id.contains("action_bar")) return true
-            if (desc.contains("search tab, selected") || desc.contains("search and explore, selected") || desc.contains("search, selected")) return true
-            if (id.contains("search_tab") && (node.isSelected || desc.contains("selected"))) return true
-
-            // Home / Feed tab selected
-            if (desc.contains("home tab, selected") || desc.contains("home, selected") || desc.contains("feed tab, selected")) return true
-            if ((id.contains("feed_tab") || id.contains("home_tab") || id.contains("tab_home")) && (node.isSelected || desc.contains("selected"))) return true
-
-            // Check if node is a selected safe bottom tab by checking bounds & selection
-            val isTabOrLabel = desc.startsWith("home") || desc.startsWith("search") || desc.startsWith("profile") || desc == "feed"
-            if (isTabOrLabel) {
-                var isSel = node.isSelected || desc.contains("selected")
-                if (!isSel) {
-                    var p = node.parent
-                    var depth = 0
-                    while (p != null && depth < 3) {
-                        val pDesc = p.contentDescription?.toString()?.lowercase() ?: ""
-                        if (p.isSelected || pDesc.contains("selected")) {
-                            isSel = true
-                            p.recycle()
-                            break
-                        }
-                        val op = p
-                        p = p.parent
-                        op.recycle()
-                        depth++
-                    }
-                    if (p != null && !isSel) p.recycle()
-                }
-                if (isSel) {
-                    val windowBounds = android.graphics.Rect()
-                    rootNode.getBoundsInScreen(windowBounds)
-                    val screenHeight = windowBounds.height()
-                    if (screenHeight > 0) {
-                        val tabBounds = android.graphics.Rect()
-                        node.getBoundsInScreen(tabBounds)
-                        if (tabBounds.bottom > screenHeight * 0.70f) {
-                            return true
-                        }
-                    }
-                }
-            }
+            // Settings
+            if (text == "settings and activity" || desc == "settings and activity") return true
 
             // Create / Camera
             if (desc.contains("camera tab, selected") || (id.contains("camera_tab") && (node.isSelected || desc.contains("selected")))) return true
-
-            // Settings
-            if (text == "settings and activity" || desc == "settings and activity") return true
         }
 
         if (packageName == "com.google.android.youtube") {
-            if (text == "notifications" || desc == "notifications") return true
-            if (text == "search youtube" || desc == "search youtube") return true
+            if (text == "notifications" && id.contains("title")) return true
             if (text == "history" && id.contains("title")) return true
             if (id.contains("bottom_bar") && desc.contains("you, selected")) return true // "You" tab
-            // YouTube retains the source tab as selected while a Short opened from
-            // that tab is playing. In particular, a Short opened from Home still
-            // exposes "Home, selected", so that is not enough to prove that the
-            // current screen is safe. Let the Shorts-player markers decide instead.
             if (desc.contains("subscriptions, selected")) return true
         }
 
         if (packageName == "com.zhiliaoapp.musically") {
-            // TikTok: Profile, Inbox, Discover, Friends are safe
+            // TikTok: Profile, Inbox are safe
             if (desc.contains("profile, selected") || desc.contains("profile tab, selected")) return true
             if (text == "profile" && (node.isSelected || desc.contains("selected"))) return true
             if (desc.contains("inbox, selected") || desc.contains("inbox tab, selected")) return true
             if (text == "inbox" && (node.isSelected || desc.contains("selected"))) return true
-            if (desc.contains("discover, selected") || desc.contains("discover tab, selected")) return true
-            if (desc.contains("friends, selected") || desc.contains("friends tab, selected")) return true
-            // Search / camera
-            if (text == "search" && id.contains("search")) return true
         }
 
         if (packageName == "com.facebook.katana") {
-            // Facebook's Home tab remains selected after opening a Reel from the
-            // feed. Do not use it as a safe-context marker: the fullscreen-player
-            // check above distinguishes an opened Reel from an inline feed card.
-            // Marketplace, Menu, Notifications, and Gaming remain safe.
             if (desc.contains("menu, selected") || desc.contains("menu tab, selected")) return true
             if (desc.contains("marketplace, selected") || desc.contains("marketplace tab, selected")) return true
             if (desc.contains("notifications, selected") || desc.contains("notifications tab, selected")) return true
             if (desc.contains("gaming, selected") || desc.contains("gaming tab, selected")) return true
-            if (text == "search" && id.contains("search")) return true
         }
 
         if (packageName == "com.snapchat.android") {

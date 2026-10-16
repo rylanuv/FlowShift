@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.flow.shift.R
 import com.flow.shift.core.billing.BillingPurchaseState
 import com.flow.shift.theme.*
+import com.flow.shift.feature.modes.BlockingMode
 
 import androidx.hilt.navigation.compose.hiltViewModel
 
@@ -45,6 +46,17 @@ fun SubscriptionScreen(
     val plans by viewModel.plans.collectAsState()
     val selectedPlanId by viewModel.selectedPlanId.collectAsState()
     val purchaseState by viewModel.purchaseState.collectAsState()
+    val blockingModeStr by viewModel.blockingMode.collectAsState()
+    val currentMode = BlockingMode.fromString(blockingModeStr)
+    val modeAccent = when (currentMode) {
+        BlockingMode.EASY -> ModeEasyAccent
+        BlockingMode.STRICT -> ModeStrictAccent
+        BlockingMode.HARDCORE -> ModeHardcoreAccent
+    }
+    val bgImageRes = when (currentMode) {
+        BlockingMode.HARDCORE -> R.drawable.fs_subs_hc_b
+        else -> R.drawable.bg_fs_subscription
+    }
 
     LaunchedEffect(purchaseState) {
         when (val state = purchaseState) {
@@ -66,7 +78,7 @@ fun SubscriptionScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
-            painter = painterResource(id = R.drawable.subscription_bg_2),
+            painter = painterResource(id = bgImageRes),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
@@ -121,13 +133,14 @@ fun SubscriptionScreen(
                 modifier = Modifier
                     .size(80.dp)
                     .clip(CircleShape)
-                    .background(PremiumGold.copy(alpha = 0.15f)),
+                    .background(modeAccent.copy(alpha = 0.15f))
+                    .border(1.dp, modeAccent.copy(alpha = 0.35f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.WorkspacePremium,
                     contentDescription = null,
-                    tint = PremiumGold,
+                    tint = modeAccent,
                     modifier = Modifier.size(48.dp)
                 )
             }
@@ -161,11 +174,11 @@ fun SubscriptionScreen(
                 .padding(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            FeatureRow("AI Push-ups, Squats & Pose Tracking Challenges")
-            FeatureRow("Advanced Math Challenges")
-            FeatureRow("Charge Phone Challenge")
-            FeatureRow("Reels Block Only")
-            FeatureRow("All Future Pro Challenges & Modes Included")
+            FeatureRow("AI Push-ups, Squats & Pose Tracking Challenges", modeAccent)
+            FeatureRow("Advanced Math Challenges", modeAccent)
+            FeatureRow("Charge Phone Challenge", modeAccent)
+            FeatureRow("Reels Block Only", modeAccent)
+            FeatureRow("All Future Pro Challenges & Modes Included", modeAccent)
         }
 
         Spacer(modifier = Modifier.height(40.dp))
@@ -183,6 +196,7 @@ fun SubscriptionScreen(
                     period = plan.period,
                     badgeText = plan.badgeText,
                     selected = selectedPlanId == plan.id,
+                    accentColor = modeAccent,
                     onClick = { viewModel.selectPlan(plan.id) }
                 )
             }
@@ -195,7 +209,7 @@ fun SubscriptionScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(if (isLoading) PremiumGold.copy(alpha = 0.6f) else PremiumGold)
+                .background(if (isLoading) modeAccent.copy(alpha = 0.6f) else modeAccent)
                 .clickable(enabled = !isLoading) { 
                     val activity = context as? Activity
                     if (activity != null) {
@@ -260,7 +274,10 @@ fun SubscriptionScreen(
 }
 
 @Composable
-private fun FeatureRow(text: String) {
+private fun FeatureRow(
+    text: String,
+    accentColor: Color
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -268,7 +285,7 @@ private fun FeatureRow(text: String) {
         Icon(
             imageVector = Icons.Default.CheckCircle,
             contentDescription = null,
-            tint = PremiumGold,
+            tint = accentColor,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
@@ -290,12 +307,13 @@ private fun PlanCard(
     period: String,
     badgeText: String? = null,
     selected: Boolean,
+    accentColor: Color,
     onClick: () -> Unit
 ) {
     val backgroundBrush = if (selected) {
         Brush.linearGradient(
             colors = listOf(
-                PremiumGold.copy(alpha = 0.18f),
+                accentColor.copy(alpha = 0.18f),
                 Color(0xFF161616).copy(alpha = 0.55f)
             )
         )
@@ -311,8 +329,8 @@ private fun PlanCard(
     val borderBrush = if (selected) {
         Brush.linearGradient(
             colors = listOf(
-                PremiumGold,
-                PremiumGold.copy(alpha = 0.65f)
+                accentColor,
+                accentColor.copy(alpha = 0.65f)
             )
         )
     } else {
@@ -356,13 +374,13 @@ private fun PlanCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(PremiumGold.copy(alpha = 0.18f))
-                                .border(1.dp, PremiumGold.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                .background(accentColor.copy(alpha = 0.18f))
+                                .border(1.dp, accentColor.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
                                 .padding(horizontal = 6.dp, vertical = 3.dp)
                         ) {
                             Text(
                                 text = badgeText,
-                                color = PremiumGold,
+                                color = accentColor,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.5.sp,
@@ -399,7 +417,7 @@ private fun PlanCard(
                     .clip(CircleShape)
                     .border(
                         width = 2.dp,
-                        color = if (selected) PremiumGold else Color.White.copy(alpha = 0.35f),
+                        color = if (selected) accentColor else Color.White.copy(alpha = 0.35f),
                         shape = CircleShape
                     ),
                 contentAlignment = Alignment.Center
@@ -409,7 +427,7 @@ private fun PlanCard(
                         modifier = Modifier
                             .size(12.dp)
                             .clip(CircleShape)
-                            .background(PremiumGold)
+                            .background(accentColor)
                     )
                 }
             }

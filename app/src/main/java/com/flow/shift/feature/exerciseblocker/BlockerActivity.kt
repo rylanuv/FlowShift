@@ -160,6 +160,29 @@ class BlockerActivity : ComponentActivity() {
                                                 finishAffinity()
                                             }
                                         )
+                                    } else if (effectiveChallengeType == "HOLD_SCREEN") {
+                                        HoldScreenChallengeScreen(
+                                            requiredSeconds = requiredReps,
+                                            targetApp = targetPackage,
+                                            onComplete = {
+                                                viewModel.completeManualChallenge(targetPackage, requiredReps, breakDurationMinutes)
+                                            },
+                                            onCancel = {
+                                                finishAffinity()
+                                            }
+                                        )
+                                    } else if (effectiveChallengeType == "NONE") {
+                                        LaunchedEffect(Unit) {
+                                            viewModel.completeManualChallenge(targetPackage, 0, breakDurationMinutes)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(SurfaceCardDarker),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(color = ModeStrictAccent)
+                                        }
                                     } else {
                                         PushUpChallengeScreen(
                                             targetPushUps = requiredReps,
@@ -208,10 +231,12 @@ fun BlockerIntroScreen(
 ) {
     val context = LocalContext.current
     val challengeName = when (challengeType) {
+        "NONE" -> "no challenge"
         "MATH" -> "math problems"
         "ADVANCED_MATH" -> "advanced math problems"
         "SQUATS" -> "squats"
         "CHARGE_PHONE" -> "phone charge"
+        "HOLD_SCREEN" -> "screen hold"
         else -> "push-ups"
     }
     Box(
@@ -244,11 +269,13 @@ fun BlockerIntroScreen(
 
             val appDisplayName = getAppLabel(context, targetApp)
             val durationText = if (requiredAmount == 1) "1 minute" else "$requiredAmount minutes"
+            val holdDurationText = if (requiredAmount == 1) "1 second" else "$requiredAmount seconds"
             Text(
-                text = if (challengeType == "CHARGE_PHONE") {
-                    "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by charging your phone for $durationText."
-                } else {
-                    "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by completing $requiredAmount $challengeName."
+                text = when (challengeType) {
+                    "NONE" -> "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName directly."
+                    "CHARGE_PHONE" -> "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by charging your phone for $durationText."
+                    "HOLD_SCREEN" -> "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by holding the screen for $holdDurationText."
+                    else -> "Earn $breakDurationMinutes minutes of scrolling in $appDisplayName by completing $requiredAmount $challengeName."
                 },
                 color = TextSecondary,
                 fontSize = 18.sp,
@@ -267,9 +294,11 @@ fun BlockerIntroScreen(
             ) {
                 Text(
                     text = when (challengeType) {
+                        "NONE" -> "Claim $breakDurationMinutes Min Break"
                         "MATH", "ADVANCED_MATH" -> "Start $requiredAmount Problems"
                         "SQUATS" -> "Start $requiredAmount Squats"
                         "CHARGE_PHONE" -> if (requiredAmount == 1) "Start 1 Min Charge" else "Start $requiredAmount Min Charge"
+                        "HOLD_SCREEN" -> if (requiredAmount == 1) "Start 1 Sec Hold" else "Start $requiredAmount Sec Hold"
                         else -> "Start $requiredAmount Push-ups"
                     },
                     color = Color.Black,
@@ -327,9 +356,11 @@ fun BlockerSuccessScreen(
             
             Text(
                 text = when (challengeType) {
+                    "NONE" -> "Break Unlocked!"
                     "MATH", "ADVANCED_MATH" -> "$requiredAmount Problems Completed!"
                     "SQUATS" -> "$requiredAmount Squats Completed!"
                     "CHARGE_PHONE" -> if (requiredAmount == 1) "Charged for 1 Minute!" else "Charged for $requiredAmount Minutes!"
+                    "HOLD_SCREEN" -> if (requiredAmount == 1) "Held for 1 Second!" else "Held for $requiredAmount Seconds!"
                     else -> "$requiredAmount Push-ups Completed!"
                 },
                 color = TextPrimary,

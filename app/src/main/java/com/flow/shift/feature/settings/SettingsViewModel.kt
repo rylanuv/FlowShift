@@ -14,13 +14,19 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import android.content.Context
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val blockedAppDao: BlockedAppDao,
-    gamificationDao: UserGamificationDao
+    gamificationDao: UserGamificationDao,
+    private val authRepository: com.flow.shift.core.auth.AuthRepository
 ) : ViewModel() {
 
     private val blockedAppsFlow = blockedAppDao.getEnabledBlockedApps()
@@ -52,6 +58,47 @@ class SettingsViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = false
     )
+
+    // ── Authentication ──
+    val authUser: StateFlow<FirebaseUser?> = authRepository.currentUser
+
+    private val _isSigningIn = MutableStateFlow(false)
+    val isSigningIn: StateFlow<Boolean> = _isSigningIn.asStateFlow()
+
+    fun signInWithGoogle(context: Context, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isSigningIn.value = true
+            val result = authRepository.signInWithGoogle(context)
+            _isSigningIn.value = false
+            result.onSuccess {
+                onResult(true, null)
+            }.onFailure { error ->
+                if (error is GetCredentialCancellationException) {
+                    onResult(false, null)
+                } else {
+                    onResult(false, error.localizedMessage ?: "Sign-in failed")
+                }
+            }
+        }
+    }
+
+    fun signOut(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            authRepository.signOut()
+            onComplete()
+        }
+    }
+
+    fun deleteAccount(onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            val result = authRepository.deleteAccount()
+            result.onSuccess {
+                onResult(true, null)
+            }.onFailure { error ->
+                onResult(false, error.localizedMessage ?: "Failed to delete account")
+            }
+        }
+    }
 
     val uiState: StateFlow<SettingsUiState> = combine(
         // Protection (split into two groups because combine max is 5)
@@ -345,7 +392,7 @@ data class NotificationState(
 data class AppearanceState(
     val theme: String = "Dark",
     val animationsEnabled: Boolean = true,
-    val showReelCount: Boolean = false
+    val showReelCount: Boolean = true
 )
 
 data class ChallengeState(

@@ -14,7 +14,7 @@ enum class BlockingMode(
     val backgroundAlpha: Float
 ) {
     EASY(1, "Easy", R.drawable.main_screen, 0.70f),
-    STRICT(2, "Discipline", R.drawable.main_screen, 0.67f),
+    STRICT(2, "Challenge", R.drawable.bg_fs00086400, 0.72f),
     HARDCORE(3, "Hardcore", R.drawable.hardcore_home, 0.65f);
 
     fun isUpgradeFrom(other: BlockingMode) = this.level > other.level
@@ -22,7 +22,10 @@ enum class BlockingMode(
 
     companion object {
         fun fromString(value: String): BlockingMode {
-            return entries.find { it.name == value } ?: EASY
+            return when (value.uppercase()) {
+                "HARDCORE" -> HARDCORE
+                else -> STRICT
+            }
         }
     }
 }

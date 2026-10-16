@@ -107,7 +107,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     val blockingMode: Flow<String> = dataStore.data.map { preferences ->
-        preferences[BLOCKING_MODE] ?: "EASY"
+        preferences[BLOCKING_MODE] ?: "STRICT"
     }
 
     val blockType: Flow<String> = dataStore.data.map { preferences ->
@@ -121,7 +121,7 @@ class SettingsDataStore @Inject constructor(
     }
 
     fun isPremiumChallenge(type: String): Boolean {
-        return type != "MATH"
+        return type != "MATH" && type != "HOLD_SCREEN" && type != "NONE"
     }
 
     fun fallbackChallenge(type: String): String {
@@ -229,11 +229,8 @@ class SettingsDataStore @Inject constructor(
     // ── Appearance Flows ──
     val theme: Flow<String> = dataStore.data.map { it[THEME] ?: "Dark" }
     val animationsEnabled: Flow<Boolean> = dataStore.data.map { it[ANIMATIONS_ENABLED] ?: true }
-    val showReelCount: Flow<Boolean> = dataStore.data.map { preferences ->
-        val enabled = preferences[SHOW_REEL_COUNT] ?: false
-        val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
-        premium && enabled
-    }
+    // Reel count is a core feature of ReelsRot and enabled all the time
+    val showReelCount: Flow<Boolean> = dataStore.data.map { true }
 
     val reelCountToday: Flow<Int> = dataStore.data.map { it[REEL_COUNT_TODAY] ?: 0 }
     val reelCountDateMillis: Flow<Long> = dataStore.data.map { it[REEL_COUNT_DATE_MILLIS] ?: 0L }
@@ -361,7 +358,6 @@ class SettingsDataStore @Inject constructor(
         if (preferences[BLOCK_TYPE] == "REELS") {
             preferences[BLOCK_TYPE] = "WHOLE_APP"
         }
-        preferences[SHOW_REEL_COUNT] = false
         val challenge = preferences[STRICT_CHALLENGE_TYPE]
         if (challenge != null && isPremiumChallenge(challenge)) {
             preferences[STRICT_CHALLENGE_TYPE] = fallbackChallenge(challenge)
@@ -439,8 +435,7 @@ class SettingsDataStore @Inject constructor(
     suspend fun setAnimationsEnabled(enabled: Boolean) { dataStore.edit { it[ANIMATIONS_ENABLED] = enabled } }
     suspend fun setShowReelCount(enabled: Boolean) {
         dataStore.edit { preferences ->
-            val premium = (preferences[IS_PREMIUM] ?: false) || (preferences[PRETEND_SUBSCRIBED] ?: false)
-            preferences[SHOW_REEL_COUNT] = if (enabled && !premium) false else enabled
+            preferences[SHOW_REEL_COUNT] = true
         }
     }
 
@@ -490,7 +485,7 @@ class SettingsDataStore @Inject constructor(
     suspend fun getReelCountToday(startOfDayMillis: Long): Int {
         val prefs = dataStore.data.first()
         val savedDate = prefs[REEL_COUNT_DATE_MILLIS] ?: 0L
-        if (savedDate != startOfDayMillis) {
+        if (savedDate < startOfDayMillis || savedDate >= startOfDayMillis + 86_400_000L) {
             return 0
         }
         return prefs[REEL_COUNT_TODAY] ?: 0
@@ -502,7 +497,7 @@ class SettingsDataStore @Inject constructor(
             val savedDate = prefs[REEL_COUNT_DATE_MILLIS] ?: 0L
             val savedCount = prefs[REEL_COUNT_TODAY] ?: 0
             
-            updatedCount = if (savedDate == startOfDayMillis) {
+            updatedCount = if (savedDate >= startOfDayMillis && savedDate < startOfDayMillis + 86_400_000L) {
                 savedCount + 1
             } else {
                 1

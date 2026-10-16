@@ -49,7 +49,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import com.flow.shift.core.AppSortingHelper
 import com.flow.shift.core.designsystem.AppIcon
-import com.flow.shift.theme.Amber500
+import com.flow.shift.theme.ModeStrictAccent
 import com.flow.shift.theme.SurfaceCardBorder
 import com.flow.shift.theme.SurfaceBlack
 
@@ -162,7 +162,7 @@ fun AppSelectionBottomSheet(
             if (isLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
-                    color = Amber500
+                    color = ModeStrictAccent
                 )
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
@@ -248,7 +248,7 @@ private fun ExpandableAppsHeader(
             Icon(
                 imageVector = Icons.Default.Apps,
                 contentDescription = null,
-                tint = Amber500,
+                tint = ModeStrictAccent,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -308,7 +308,7 @@ private fun AppListItem(
                 onCheckedChange = onCheckedChange,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = Amber500,
+                    checkedTrackColor = ModeStrictAccent,
                     uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
                     uncheckedTrackColor = Color.White.copy(alpha = 0.1f),
                     uncheckedBorderColor = Color.Transparent

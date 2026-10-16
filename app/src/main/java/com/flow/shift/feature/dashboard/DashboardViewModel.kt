@@ -109,7 +109,7 @@ class DashboardViewModel @Inject constructor(
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         val dbCount = events.count { it.timestamp >= startOfDay }
-        val datastoreCount = if (storeDate == startOfDay) storeCount else 0
+        val datastoreCount = if (storeDate >= startOfDay && storeDate < startOfDay + 86_400_000L) storeCount else 0
         maxOf(dbCount, datastoreCount)
     }.flowOn(Dispatchers.IO)
 
@@ -267,7 +267,7 @@ data class DashboardSettings(
     val targetScreenTime: String = "2h",
     val easyModeWaitSeconds: Int = 90,
     val preventDisablingFocusMode: Boolean = false,
-    val showReelCount: Boolean = false,
+    val showReelCount: Boolean = true,
     val isPremium: Boolean = false,
     val dailyReelLimit: Int = 200
 )

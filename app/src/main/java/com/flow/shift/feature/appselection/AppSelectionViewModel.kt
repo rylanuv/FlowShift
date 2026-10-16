@@ -1,6 +1,10 @@
 package com.flow.shift.feature.appselection
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import com.flow.shift.core.designsystem.preloadAppIcon
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flow.shift.core.AppSortingHelper
@@ -55,21 +59,39 @@ class AppSelectionViewModel @Inject constructor(
     private fun loadInstalledApps() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
-            val packages = pm.getInstalledApplications(0)
-            
-            val apps = packages.filter { 
-                // Show launchable apps (includes pre-installed user apps like YouTube/Chrome)
-                pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != context.packageName
-            }.map {
-                AppItem(
-                    packageName = it.packageName,
-                    appName = pm.getApplicationLabel(it).toString(),
-                    isBlocked = false
-                )
+            val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
             }
+            val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.queryIntentActivities(
+                    launcherIntent,
+                    PackageManager.ResolveInfoFlags.of(0L)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                pm.queryIntentActivities(launcherIntent, 0)
+            }
+            
+            val apps = resolveInfos
+                .filter { it.activityInfo.packageName != context.packageName }
+                .distinctBy { it.activityInfo.packageName }
+                .map { resolveInfo ->
+                    val appName = runCatching { resolveInfo.loadLabel(pm).toString() }.getOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: resolveInfo.activityInfo.packageName
+                    AppItem(
+                        packageName = resolveInfo.activityInfo.packageName,
+                        appName = appName,
+                        isBlocked = false
+                    )
+                }
             
             _installedApps.value = apps
             _isLoading.value = false
+
+            val topApps = apps.filter { AppSortingHelper.isSocialOrTopApp(it.packageName, it.appName) }
+            for (app in topApps) {
+                preloadAppIcon(context, app.packageName)
+            }
         }
     }
 

@@ -32,6 +32,7 @@ import com.flow.shift.feature.modes.EasyModeSettingsScreen
 import com.flow.shift.feature.modes.ModesScreen
 import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.feature.onboarding.OnboardingScreen
+import com.flow.shift.feature.settings.AccountScreen
 import com.flow.shift.feature.settings.SettingsScreen
 import com.flow.shift.feature.subscription.SubscriptionScreen
 import com.flow.shift.feature.statistics.StatisticsScreen
@@ -105,8 +106,8 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
-    val currentModeStr by (settingsDataStore?.blockingMode ?: kotlinx.coroutines.flow.flowOf("EASY"))
-        .collectAsStateWithLifecycle(initialValue = "EASY")
+    val currentModeStr by (settingsDataStore?.blockingMode ?: kotlinx.coroutines.flow.flowOf("STRICT"))
+        .collectAsStateWithLifecycle(initialValue = "STRICT")
     val currentMode = BlockingMode.fromString(currentModeStr)
 
     val blockSettingsAccess by (settingsDataStore?.blockSettingsAccess ?: kotlinx.coroutines.flow.flowOf(false))
@@ -147,7 +148,7 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
                             }
                             showSettingsBlockedDialog = false
                         },
-                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFF59E0B)) // Amber500
+                        colors = ButtonDefaults.textButtonColors(contentColor = com.flow.shift.theme.ModeStrictAccent)
                     ) { Text("Start Unlock Timer") }
                 },
                 dismissButton = {
@@ -171,7 +172,7 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
                 confirmButton = {
                     TextButton(
                         onClick = { showSettingsBlockedDialog = false },
-                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFF59E0B)) // Amber500
+                        colors = ButtonDefaults.textButtonColors(contentColor = com.flow.shift.theme.ModeStrictAccent)
                     ) { Text("OK") }
                 }
             )
@@ -224,7 +225,11 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
                             colors = NavigationBarItemDefaults.colors(
                                 unselectedIconColor = Color(0xFF71717A),
                                 unselectedTextColor = Color(0xFF71717A),
-                                selectedIconColor = Color(0xFFF59E0B),
+                                selectedIconColor = when (currentMode) {
+                                    BlockingMode.EASY -> com.flow.shift.theme.ModeEasyAccent
+                                    BlockingMode.STRICT -> com.flow.shift.theme.ModeStrictAccent
+                                    BlockingMode.HARDCORE -> com.flow.shift.theme.ModeHardcoreAccent
+                                },
                                 selectedTextColor = Color.White,
                                 indicatorColor = Color.Transparent
                             )
@@ -277,12 +282,16 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
                                 onNavigateToEasyModeSettings = { navController.navigate("easyModeSettings") },
                                 onNavigateToSubscription = { navController.navigate("subscription") }
                             )
-                            2 -> StatisticsScreen(onNavigateBack = {})
+                            2 -> StatisticsScreen(
+                                showBackground = false,
+                                onNavigateBack = {}
+                            )
                             3 -> SettingsScreen(
                                 showBackground = false,
                                 onNavigateToAppSelection = { navController.navigate("appSelection") },
                                 onNavigateToSubscription = { navController.navigate("subscription") },
-                                onNavigateToTroubleshoot = { navController.navigate("troubleshoot") }
+                                onNavigateToTroubleshoot = { navController.navigate("troubleshoot") },
+                                onNavigateToAccount = { navController.navigate("account") }
                             )
                         }
                     }
@@ -317,7 +326,9 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
                     showBackground = true,
                     onNavigateToAppSelection = { navController.navigate("appSelection") },
                     onNavigateToSubscription = { navController.navigate("subscription") },
-                    onNavigateToTroubleshoot = { navController.navigate("troubleshoot") }
+                    onNavigateToTroubleshoot = { navController.navigate("troubleshoot") },
+                    onNavigateToAccount = { navController.navigate("account") },
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable("troubleshoot") {
@@ -325,8 +336,14 @@ fun ReelsRotApp(startDestination: String = "main", settingsDataStore: SettingsDa
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
+            composable("account") {
+                AccountScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
             composable("stats") {
                 StatisticsScreen(
+                    showBackground = true,
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

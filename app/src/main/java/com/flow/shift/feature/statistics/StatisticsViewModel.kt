@@ -45,6 +45,12 @@ class StatisticsViewModel @Inject constructor(
     private val _selectedPeriod = MutableStateFlow(StatsTimePeriod.TODAY)
     val selectedPeriod: StateFlow<StatsTimePeriod> = _selectedPeriod
 
+    val blockingMode: StateFlow<String> = settingsDataStore.blockingMode.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = "STRICT"
+    )
+
     private val _refreshTrigger = MutableStateFlow(0)
 
     private val reelStoreFlow = combine(
@@ -172,7 +178,8 @@ class StatisticsViewModel @Inject constructor(
         var periodTotalReels = periodReelEvents.size
 
         // If period is TODAY, reconcile with existing DataStore today counter (e.g. 27 reels from live device)
-        if (period == StatsTimePeriod.TODAY && reelStore.dateMillis == startOfToday && reelStore.count > periodTotalReels) {
+        val isTodayDate = reelStore.dateMillis >= startOfToday && reelStore.dateMillis < startOfToday + 86_400_000L
+        if (period == StatsTimePeriod.TODAY && isTodayDate && reelStore.count > periodTotalReels) {
             val discrepancy = reelStore.count - periodTotalReels
             periodTotalReels = reelStore.count
             val primaryShortsApp = blockedApps.firstOrNull {

@@ -1,5 +1,6 @@
 package com.flow.shift.core.designsystem
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.util.LruCache
@@ -76,6 +77,23 @@ fun AppIcon(
     }
 }
 
+fun preloadAppIcon(context: Context, packageName: String): ImageBitmap? {
+    val cached = getCachedIcon(packageName)
+    if (cached != null) return cached
+
+    return runCatching {
+        val pm = context.packageManager
+        val drawable = pm.getApplicationIcon(packageName)
+        val bmp = Bitmap.createBitmap(ICON_SIZE_PX, ICON_SIZE_PX, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        drawable.setBounds(0, 0, ICON_SIZE_PX, ICON_SIZE_PX)
+        drawable.draw(canvas)
+        bmp.asImageBitmap().also { loaded ->
+            putCachedIcon(packageName, loaded)
+        }
+    }.getOrNull()
+}
+
 @Composable
 fun rememberAppIconBitmap(packageName: String): ImageBitmap? {
     val context = LocalContext.current
@@ -86,17 +104,7 @@ fun rememberAppIconBitmap(packageName: String): ImageBitmap? {
 
     val iconBitmap by produceState<ImageBitmap?>(initialValue = null, packageName) {
         val bitmap = withContext(Dispatchers.IO) {
-            getCachedIcon(packageName) ?: runCatching {
-                val pm = context.packageManager
-                val drawable = pm.getApplicationIcon(packageName)
-                val bmp = Bitmap.createBitmap(ICON_SIZE_PX, ICON_SIZE_PX, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bmp)
-                drawable.setBounds(0, 0, ICON_SIZE_PX, ICON_SIZE_PX)
-                drawable.draw(canvas)
-                bmp.asImageBitmap().also { loaded ->
-                    putCachedIcon(packageName, loaded)
-                }
-            }.getOrNull()
+            preloadAppIcon(context, packageName)
         }
         value = bitmap
     }

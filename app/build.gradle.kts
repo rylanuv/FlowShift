@@ -126,7 +126,14 @@ dependencies {
   // Firebase
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.analytics)
+  implementation(libs.firebase.auth)
+
+  // Credentials / Google Sign-In
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services)
+  implementation(libs.googleid)
 
   // Google Play Billing
   implementation(libs.google.billing)
 }
+

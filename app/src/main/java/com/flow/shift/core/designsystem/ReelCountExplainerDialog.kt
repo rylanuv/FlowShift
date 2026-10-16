@@ -203,7 +203,7 @@ fun ReelCountExplainerDialog(
                 onClick = onEnableClick,
                 colors = ButtonDefaults.buttonColors(containerColor = Amber500, contentColor = Color.White)
             ) {
-                Text(if (isPremium) "Enable" else "Unlock with Pro")
+                Text("Enable")
             }
         },
         dismissButton = {

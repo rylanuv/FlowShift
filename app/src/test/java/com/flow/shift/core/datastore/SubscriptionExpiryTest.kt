@@ -9,7 +9,7 @@ class SubscriptionExpiryTest {
 
     // Helper logic mirrored directly from SettingsDataStore
     private fun isPremiumChallenge(type: String): Boolean {
-        return type != "MATH"
+        return type != "MATH" && type != "HOLD_SCREEN" && type != "NONE"
     }
 
     private fun fallbackChallenge(type: String): String {
@@ -29,7 +29,7 @@ class SubscriptionExpiryTest {
     }
 
     private fun resolveEffectiveShowReelCount(showReelCount: Boolean, isPremium: Boolean): Boolean {
-        return isPremium && showReelCount
+        return true
     }
 
     @Test
@@ -39,6 +39,8 @@ class SubscriptionExpiryTest {
         assertTrue(isPremiumChallenge("CHARGE_PHONE"))
         assertTrue(isPremiumChallenge("PUSHUPS"))
         assertFalse(isPremiumChallenge("MATH"))
+        assertFalse(isPremiumChallenge("HOLD_SCREEN"))
+        assertFalse(isPremiumChallenge("NONE"))
     }
 
     @Test
@@ -59,6 +61,8 @@ class SubscriptionExpiryTest {
 
         // Free challenges remain unaffected
         assertEquals("MATH", resolveEffectiveChallenge("MATH", isPremium = false))
+        assertEquals("HOLD_SCREEN", resolveEffectiveChallenge("HOLD_SCREEN", isPremium = false))
+        assertEquals("NONE", resolveEffectiveChallenge("NONE", isPremium = false))
 
         // When subscription is active (isPremium = true), premium challenges remain
         assertEquals("ADVANCED_MATH", resolveEffectiveChallenge("ADVANCED_MATH", isPremium = true))
@@ -79,12 +83,10 @@ class SubscriptionExpiryTest {
 
     @Test
     fun testShowReelCountExpiryResolution() {
-        // When expired, showReelCount is disabled even if previously enabled
-        assertFalse(resolveEffectiveShowReelCount(showReelCount = true, isPremium = false))
-        assertFalse(resolveEffectiveShowReelCount(showReelCount = false, isPremium = false))
-
-        // When premium, respects user setting
+        // Reel count is a core feature and enabled all the time, regardless of subscription status
+        assertTrue(resolveEffectiveShowReelCount(showReelCount = true, isPremium = false))
+        assertTrue(resolveEffectiveShowReelCount(showReelCount = false, isPremium = false))
         assertTrue(resolveEffectiveShowReelCount(showReelCount = true, isPremium = true))
-        assertFalse(resolveEffectiveShowReelCount(showReelCount = false, isPremium = true))
+        assertTrue(resolveEffectiveShowReelCount(showReelCount = false, isPremium = true))
     }
 }

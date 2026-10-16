@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.LocalCafe
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -113,7 +115,7 @@ fun DashboardScreen(
             is DashboardUiState.Loading -> {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
-                    color = Amber500
+                    color = ModeStrictAccent
                 )
             }
             is DashboardUiState.Success -> {
@@ -253,64 +255,14 @@ private fun DashboardContent(
         }
 
         // ═══════════════════════════════════════════
-                // ??? 2. HERO PROGRESS RING ???
-        // ---------------------------------------------------------------------------
-        val blobPath = remember { Path() }
+        // ── 2. HERO PROGRESS RING ──
+        // ═══════════════════════════════════════════
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Wavy Watery Background
-            Box(
-                modifier = Modifier
-                    .size(340.dp)
-                    .drawBehind {
-                        blobPath.reset()
-                        val w = size.width
-                        val h = size.height
-                        val radius = size.minDimension / 2f * 0.90f
-                        val center = Offset(w / 2f, h / 2f)
-                        
-                        for (i in 0..360 step 2) {
-                            val rad = Math.toRadians(i.toDouble()).toFloat()
-                            // Organic irregularity using sum of sines to simulate a watery blob
-                            val r = radius + 
-                                    radius * 0.06f * kotlin.math.sin(rad * 4f) + 
-                                    radius * 0.04f * kotlin.math.cos(rad * 3f) +
-                                    radius * 0.03f * kotlin.math.sin(rad * 7f)
-                                    
-                            val x = center.x + r * kotlin.math.cos(rad)
-                            val y = center.y + r * kotlin.math.sin(rad)
-                            
-                            if (i == 0) blobPath.moveTo(x, y)
-                            else blobPath.lineTo(x, y)
-                        }
-                        blobPath.close()
-
-                        // Semi-transparent glassy dark fill
-                        drawPath(
-                            path = blobPath,
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.12f),
-                                    Color(0xFF0F151A).copy(alpha = 0.6f)
-                                ),
-                                center = Offset(w * 0.3f, h * 0.3f),
-                                radius = w * 0.8f
-                            )
-                        )
-                        
-                        // Thin glassy highlight border
-                        drawPath(
-                            path = blobPath,
-                            color = Color.White.copy(alpha = 0.35f),
-                            style = Stroke(width = 1.dp.toPx())
-                        )
-                    }
-            )
-
             // Original Progress Ring
             Box(
                 modifier = Modifier
@@ -376,27 +328,10 @@ private fun DashboardContent(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    // Top Icon Glass Box
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.1f))
-                            .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SmartDisplay,
-                            contentDescription = null,
-                            tint = activeColor,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
                     // Status label
                     Text(
                         text = topLabel,
-                        color = activeColor,
+                        color = androidx.compose.ui.graphics.lerp(activeColor, Color.White, 0.35f),
                         style = androidx.compose.ui.text.TextStyle(
                             shadow = androidx.compose.ui.graphics.Shadow(
                                 color = activeColor,
@@ -450,7 +385,7 @@ private fun DashboardContent(
             }
         }
 
-        // ── Reels Scrolled Pill (optional) ──
+        // ── Reels Scrolled Pill ──
         if (settings.showReelCount) {
             Box(
                 modifier = Modifier.fillMaxWidth(),
@@ -471,7 +406,7 @@ private fun DashboardContent(
                         Icon(
                             imageVector = Icons.Default.SmartDisplay,
                             contentDescription = null,
-                            tint = if (metrics.totalReelsToday > 0) Amber500 else TextSecondary,
+                            tint = if (metrics.totalReelsToday > 0) activeColor else TextSecondary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
@@ -484,7 +419,7 @@ private fun DashboardContent(
                         )
                         Text(
                             text = metrics.totalReelsToday.toString(),
-                            color = if (metrics.totalReelsToday > 0) Amber500 else TextPrimary,
+                            color = if (metrics.totalReelsToday > 0) activeColor else TextPrimary,
                             fontSize = 12.sp,
                             fontFamily = AppFontFamily,
                             fontWeight = FontWeight.Bold
@@ -516,6 +451,8 @@ private fun DashboardContent(
                         "You still have reels left, enjoy them"
                     } else {
                         when (challengeType) {
+                            "NONE" -> "No challenge required"
+                            "HOLD_SCREEN" -> "Hold screen ($challengeAmount sec)"
                             "CHARGE_PHONE" -> "Charge phone ($challengeAmount min)"
                             "MATH", "ADVANCED_MATH" -> "Solve math first"
                             "SQUATS" -> "Complete squats first"
@@ -569,6 +506,8 @@ private fun DashboardContent(
             }
             BlockingMode.STRICT -> {
                 val (title, icon) = when (challengeType) {
+                    "NONE" -> "No Challenge" to Icons.Default.CheckCircle
+                    "HOLD_SCREEN" -> "$challengeAmount sec Hold" to Icons.Default.TouchApp
                     "MATH" -> "$challengeAmount Maths" to Icons.Default.Psychology
                     "ADVANCED_MATH" -> "$challengeAmount Adv Maths" to Icons.Default.Psychology
                     "SQUATS" -> "$challengeAmount Squats" to Icons.Default.FitnessCenter
@@ -580,7 +519,7 @@ private fun DashboardContent(
                     iconTint = modeAccent,
                     label = "CURRENT CHALLENGE",
                     title = title,
-                    subtitle = "Complete to unlock a ${breakDurationMinutes}min break",
+                    subtitle = if (challengeType == "NONE") "Directly unlock a ${breakDurationMinutes}min break" else "Complete to unlock a ${breakDurationMinutes}min break",
                     accentColor = modeAccent,
                     onClick = onNavigateToModes
                 )

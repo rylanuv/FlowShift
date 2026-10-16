@@ -22,11 +22,13 @@ import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.*
@@ -82,6 +84,9 @@ fun ModesScreen(
     val easyWaitSeconds by viewModel.easyModeWaitSeconds.collectAsStateWithLifecycle()
     val activeBreakUntilMillis by viewModel.activeBreakUntilMillis.collectAsStateWithLifecycle()
 
+    var localChallengeAmount by remember(strictChallengeType, strictChallengeAmount) { mutableIntStateOf(strictChallengeAmount) }
+    var localBreakDuration by remember(breakDurationMinutes) { mutableIntStateOf(breakDurationMinutes) }
+
     val context = LocalContext.current
     var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(activeBreakUntilMillis) {
@@ -114,23 +119,37 @@ fun ModesScreen(
     val challengeOptions = remember {
         listOf(
             ChallengeTypeInfo(
+                type = "NONE",
+                title = "No Challenge",
+                description = "Instant unlock",
+                icon = Icons.Default.CheckCircle,
+                isPremium = false
+            ),
+            ChallengeTypeInfo(
+                type = "HOLD_SCREEN",
+                title = "Hold Screen",
+                description = "Hold to unlock",
+                icon = Icons.Default.TouchApp,
+                isPremium = false
+            ),
+            ChallengeTypeInfo(
                 type = "MATH",
                 title = "Maths",
-                description = "Solve arithmetic equations to unblock",
+                description = "Solve sums",
                 icon = Icons.Default.Calculate,
                 isPremium = false
             ),
             ChallengeTypeInfo(
                 type = "ADVANCED_MATH",
                 title = "Advanced Maths",
-                description = "Calculus, matrices, geometry & algebra",
+                description = "For Maths Lovers",
                 icon = Icons.Default.Psychology,
                 isPremium = true
             ),
             ChallengeTypeInfo(
                 type = "PUSHUPS",
                 title = "Push-ups",
-                description = "Real-time AI camera rep counting",
+                description = "Do Push-ups",
                 icon = Icons.Default.FitnessCenter,
                 isPremium = true,
                 requiresCamera = true
@@ -138,7 +157,7 @@ fun ModesScreen(
             ChallengeTypeInfo(
                 type = "SQUATS",
                 title = "Squats",
-                description = "Real-time AI camera posture tracking",
+                description = "Do Squats",
                 icon = Icons.Default.Accessibility,
                 isPremium = true,
                 requiresCamera = true
@@ -146,7 +165,7 @@ fun ModesScreen(
             ChallengeTypeInfo(
                 type = "CHARGE_PHONE",
                 title = "Charge Phone",
-                description = "Plug in device to earn break time",
+                description = "Plug in",
                 icon = Icons.Default.BatteryChargingFull,
                 isPremium = true
             )
@@ -253,14 +272,9 @@ fun ModesScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Main Challenge Setup Card
+            // Challenge Setup
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(SurfaceCard.copy(alpha = 0.30f))
-                    .border(1.dp, GlassBorderBrush, RoundedCornerShape(24.dp))
-                    .padding(24.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "Challenge Type",
@@ -272,49 +286,54 @@ fun ModesScreen(
                     text = "Select what you must complete to earn break time",
                     color = TextSecondary,
                     fontSize = 13.sp,
-                    modifier = Modifier.padding(top = 2.dp, bottom = 16.dp)
+                    modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
                 )
 
                 // Challenge Selection List
-                challengeOptions.chunked(3).forEach { rowItems ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        rowItems.forEach { item ->
-                            val isSelected = strictChallengeType == item.type
-                            
-                            Box(modifier = Modifier.weight(1f)) {
-                                ChallengeOptionCard(
-                                    item = item,
-                                    isSelected = isSelected,
-                                    isUserPremium = isPremium,
-                                    onClick = {
-                                        if (item.isPremium && !isPremium) {
-                                            onNavigateToSubscription()
-                                        } else if (item.requiresCamera) {
-                                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                                                viewModel.setStrictChallengeType(item.type)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    challengeOptions.chunked(3).forEach { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            rowItems.forEach { item ->
+                                val isSelected = strictChallengeType == item.type
+                                
+                                Box(modifier = Modifier.weight(1f)) {
+                                    ChallengeOptionCard(
+                                        item = item,
+                                        isSelected = isSelected,
+                                        isUserPremium = isPremium,
+                                        onClick = {
+                                            if (item.isPremium && !isPremium) {
+                                                onNavigateToSubscription()
+                                            } else if (item.requiresCamera) {
+                                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                                    viewModel.setStrictChallengeType(item.type)
+                                                } else {
+                                                    pendingCameraChallenge = item.type
+                                                    cameraLauncher.launch(Manifest.permission.CAMERA)
+                                                }
                                             } else {
-                                                pendingCameraChallenge = item.type
-                                                cameraLauncher.launch(Manifest.permission.CAMERA)
+                                                viewModel.setStrictChallengeType(item.type)
                                             }
-                                        } else {
-                                            viewModel.setStrictChallengeType(item.type)
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
-                        }
-                        
-                        if (rowItems.size < 3) {
-                            repeat(3 - rowItems.size) {
-                                Spacer(modifier = Modifier.weight(1f))
+                            
+                            if (rowItems.size < 3) {
+                                repeat(3 - rowItems.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }
-                    
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -356,7 +375,7 @@ fun ModesScreen(
                             ) {
                                 Text(
                                     text = diff,
-                                    color = if (isDiffSelected) Color.White else TextSecondary,
+                                    color = if (isDiffSelected) Color.Black else TextSecondary,
                                     fontSize = 13.sp,
                                     fontWeight = if (isDiffSelected) FontWeight.Bold else FontWeight.Medium
                                 )
@@ -417,9 +436,9 @@ fun ModesScreen(
                                 ) {
                                     Text(
                                         text = topicName,
-                                        color = if (isTopicSelected) Color.White else TextSecondary,
+                                        color = if (isTopicSelected) Color.Black else TextSecondary,
                                         fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = if (isTopicSelected) FontWeight.Bold else FontWeight.Medium
                                     )
                                 }
                             }
@@ -432,86 +451,115 @@ fun ModesScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                // Challenge Target / Amount
-                val amountUnit = when (strictChallengeType) {
-                    "CHARGE_PHONE" -> if (strictChallengeAmount == 1) "minute" else "minutes"
-                    "MATH", "ADVANCED_MATH" -> if (strictChallengeAmount == 1) "problem" else "problems"
-                    "PUSHUPS", "SQUATS" -> if (strictChallengeAmount == 1) "rep" else "reps"
-                    else -> if (strictChallengeAmount == 1) "rep" else "reps"
-                }
+                if (strictChallengeType != "NONE") {
+                    // Challenge Target / Amount
+                    val amountUnit = when (strictChallengeType) {
+                        "HOLD_SCREEN" -> if (strictChallengeAmount == 1) "second" else "seconds"
+                        "CHARGE_PHONE" -> if (strictChallengeAmount == 1) "minute" else "minutes"
+                        "MATH", "ADVANCED_MATH" -> if (strictChallengeAmount == 1) "problem" else "problems"
+                        "PUSHUPS", "SQUATS" -> if (strictChallengeAmount == 1) "rep" else "reps"
+                        else -> if (strictChallengeAmount == 1) "rep" else "reps"
+                    }
 
-                val maxRange = when (strictChallengeType) {
-                    "CHARGE_PHONE" -> 60f
-                    "MATH", "ADVANCED_MATH" -> 30f
-                    else -> 50f
-                }
+                    val maxRange = when (strictChallengeType) {
+                        "HOLD_SCREEN" -> 90f
+                        "CHARGE_PHONE" -> 60f
+                        "MATH", "ADVANCED_MATH" -> 30f
+                        "PUSHUPS", "SQUATS" -> 100f
+                        else -> 50f
+                    }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (strictChallengeType == "CHARGE_PHONE") "Charging Duration" else "Challenge Amount",
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = when (strictChallengeType) {
+                                "CHARGE_PHONE" -> "Charging Duration"
+                                "HOLD_SCREEN" -> "Hold Duration"
+                                else -> "Challenge Amount"
+                            },
+                            color = TextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "$localChallengeAmount $amountUnit",
+                            color = ModeStrictAccent,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val minRange = if (strictChallengeType == "MATH" || strictChallengeType == "ADVANCED_MATH") 1f else 5f
+                    val stepSize = if (strictChallengeType == "MATH" || strictChallengeType == "ADVANCED_MATH") 1f else 5f
+                    val sliderSteps = (((maxRange - minRange) / stepSize).roundToInt() - 1).coerceAtLeast(0)
+
+                    Slider(
+                        value = localChallengeAmount.toFloat().coerceIn(minRange, maxRange),
+                        onValueChange = { rawVal ->
+                            val snapped = (((rawVal - minRange) / stepSize).roundToInt() * stepSize + minRange).roundToInt().coerceIn(minRange.toInt(), maxRange.toInt())
+                            if (localChallengeAmount != snapped) {
+                                localChallengeAmount = snapped
+                            }
+                        },
+                        onValueChangeFinished = {
+                            viewModel.setStrictChallengeAmount(localChallengeAmount)
+                        },
+                        valueRange = minRange..maxRange,
+                        steps = sliderSteps,
+                        colors = SliderDefaults.colors(
+                            thumbColor = ModeStrictAccent,
+                            activeTrackColor = ModeStrictAccent,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.15f),
+                            activeTickColor = Color.Transparent,
+                            inactiveTickColor = Color.Transparent
+                        )
                     )
-                    Text(
-                        text = "$strictChallengeAmount $amountUnit",
-                        color = ModeStrictAccent,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                    // Quick presets for amount
+                    val presets = when (strictChallengeType) {
+                        "HOLD_SCREEN" -> listOf(15, 30, 60, 90)
+                        "CHARGE_PHONE" -> listOf(5, 10, 15, 30)
+                        "MATH", "ADVANCED_MATH" -> listOf(3, 5, 10, 15)
+                        "PUSHUPS", "SQUATS" -> listOf(10, 25, 50, 100)
+                        else -> listOf(5, 10, 15, 20)
+                    }
 
-                Slider(
-                    value = strictChallengeAmount.toFloat().coerceIn(1f, maxRange),
-                    onValueChange = { viewModel.setStrictChallengeAmount(it.roundToInt()) },
-                    valueRange = 1f..maxRange,
-                    colors = SliderDefaults.colors(
-                        thumbColor = ModeStrictAccent,
-                        activeTrackColor = ModeStrictAccent,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.15f)
-                    )
-                )
-
-                // Quick presets for amount
-                val presets = when (strictChallengeType) {
-                    "CHARGE_PHONE" -> listOf(5, 10, 15, 30)
-                    "MATH", "ADVANCED_MATH" -> listOf(3, 5, 10, 15)
-                    else -> listOf(5, 10, 15, 20)
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    presets.forEach { presetVal ->
-                        val isPresetActive = strictChallengeAmount == presetVal
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(CircleShape)
-                                .background(if (isPresetActive) ModeStrictAccent else Color.White.copy(alpha = 0.08f))
-                                .border(1.dp, if (isPresetActive) ModeStrictAccent else Color.White.copy(alpha = 0.15f), CircleShape)
-                                .clickable { viewModel.setStrictChallengeAmount(presetVal) }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "$presetVal",
-                                color = if (isPresetActive) Color.White else TextSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        presets.forEach { presetVal ->
+                            val isPresetActive = localChallengeAmount == presetVal
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(if (isPresetActive) ModeStrictAccent else Color.White.copy(alpha = 0.08f))
+                                    .border(1.dp, if (isPresetActive) ModeStrictAccent else Color.White.copy(alpha = 0.15f), CircleShape)
+                                    .clickable {
+                                        localChallengeAmount = presetVal
+                                        viewModel.setStrictChallengeAmount(presetVal)
+                                    }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$presetVal",
+                                    color = if (isPresetActive) Color.Black else TextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isPresetActive) FontWeight.Bold else FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
 
                 // Break Duration Slider
                 Row(
@@ -526,7 +574,7 @@ fun ModesScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "$breakDurationMinutes min",
+                        text = "$localBreakDuration min",
                         color = ModeStrictAccent,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
@@ -542,39 +590,58 @@ fun ModesScreen(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
+                val breakMin = 5f
+                val breakMax = 60f
+                val breakStep = 5f
+                val breakSteps = (((breakMax - breakMin) / breakStep).roundToInt() - 1).coerceAtLeast(0)
+
                 Slider(
-                    value = breakDurationMinutes.toFloat().coerceIn(1f, 60f),
-                    onValueChange = { viewModel.setBreakDurationMinutes(it.roundToInt()) },
-                    valueRange = 1f..60f,
+                    value = localBreakDuration.toFloat().coerceIn(breakMin, breakMax),
+                    onValueChange = { rawVal ->
+                        val snapped = (((rawVal - breakMin) / breakStep).roundToInt() * breakStep + breakMin).roundToInt().coerceIn(breakMin.toInt(), breakMax.toInt())
+                        if (localBreakDuration != snapped) {
+                            localBreakDuration = snapped
+                        }
+                    },
+                    onValueChangeFinished = {
+                        viewModel.setBreakDurationMinutes(localBreakDuration)
+                    },
+                    valueRange = breakMin..breakMax,
+                    steps = breakSteps,
                     colors = SliderDefaults.colors(
                         thumbColor = ModeStrictAccent,
                         activeTrackColor = ModeStrictAccent,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.15f)
+                        inactiveTrackColor = Color.White.copy(alpha = 0.15f),
+                        activeTickColor = Color.Transparent,
+                        inactiveTickColor = Color.Transparent
                     )
                 )
 
-                val breakPresets = listOf(5, 10, 15, 20)
+                val breakPresets = listOf(5, 15, 30, 60)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     breakPresets.forEach { minutes ->
-                        val isPresetActive = breakDurationMinutes == minutes
+                        val isPresetActive = localBreakDuration == minutes
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(CircleShape)
                                 .background(if (isPresetActive) ModeStrictAccent else Color.White.copy(alpha = 0.08f))
                                 .border(1.dp, if (isPresetActive) ModeStrictAccent else Color.White.copy(alpha = 0.15f), CircleShape)
-                                .clickable { viewModel.setBreakDurationMinutes(minutes) }
+                                .clickable {
+                                    localBreakDuration = minutes
+                                    viewModel.setBreakDurationMinutes(minutes)
+                                }
                                 .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "${minutes}m",
-                                color = if (isPresetActive) Color.White else TextSecondary,
+                                text = "${minutes}min",
+                                color = if (isPresetActive) Color.Black else TextSecondary,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = if (isPresetActive) FontWeight.Bold else FontWeight.SemiBold
                             )
                         }
                     }
@@ -624,32 +691,34 @@ private fun ChallengeOptionCard(
         "PUSHUPS" -> Color(0xFFFFA726)
         "SQUATS" -> Color(0xFF66BB6A)
         "CHARGE_PHONE" -> Color(0xFF4CAF50)
+        "HOLD_SCREEN" -> Color(0xFFAB47BC)
+        "NONE" -> Color(0xFF81C784)
         else -> Color(0xFFFFCA28)
     }
 
-    val bgColor = if (isSelected) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.05f)
+    val bgColor = if (isSelected) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.08f)
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(bgColor)
             .then(
-                if (isSelected) Modifier.border(1.5.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                else Modifier.border(1.dp, Color.White.copy(alpha = 0.02f), RoundedCornerShape(16.dp))
+                if (isSelected) Modifier.border(1.5.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                else Modifier.border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
             )
             .clickable { onClick() }
-            .padding(vertical = 16.dp, horizontal = 8.dp),
+            .padding(vertical = 10.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier.size(56.dp),
+            modifier = Modifier.size(44.dp),
             contentAlignment = Alignment.Center
         ) {
             // Circle with colored outline and icon
             Box(
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
                     .border(1.5.dp, itemColor.copy(alpha = 0.7f), CircleShape),
                 contentAlignment = Alignment.Center
@@ -658,7 +727,7 @@ private fun ChallengeOptionCard(
                     imageVector = item.icon,
                     contentDescription = item.title,
                     tint = itemColor,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
@@ -667,7 +736,7 @@ private fun ChallengeOptionCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .size(20.dp)
+                        .size(17.dp)
                         .clip(CircleShape)
                         .background(SurfaceCard),
                     contentAlignment = Alignment.Center
@@ -676,21 +745,21 @@ private fun ChallengeOptionCard(
                         imageVector = Icons.Default.Lock,
                         contentDescription = "Locked",
                         tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(10.dp)
                     )
                 }
             } else if (isSelected) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .size(20.dp)
+                        .size(17.dp)
                         .clip(CircleShape)
                         .background(SurfaceCard),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(16.dp)
+                            .size(14.dp)
                             .clip(CircleShape)
                             .background(ModeStrictAccent),
                         contentAlignment = Alignment.Center
@@ -698,33 +767,33 @@ private fun ChallengeOptionCard(
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = "Selected",
-                            tint = Color.White,
-                            modifier = Modifier.size(10.dp)
+                            tint = Color.Black,
+                            modifier = Modifier.size(9.dp)
                         )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
             text = item.title,
             color = TextPrimary,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
-            lineHeight = 16.sp,
+            lineHeight = 15.sp,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
         Text(
             text = item.description,
             color = TextSecondary,
-            fontSize = 10.sp,
+            fontSize = 9.5.sp,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
             lineHeight = 12.sp,
@@ -740,6 +809,8 @@ private fun buildStrictDescription(challengeType: String): String {
         "ADVANCED_MATH" -> "Solve advanced maths to earn scroll time."
         "SQUATS" -> "Perform squats to earn scroll time."
         "CHARGE_PHONE" -> "Charge your phone to earn scroll time."
+        "HOLD_SCREEN" -> "Hold the screen to earn scroll time."
+        "NONE" -> "Earn scroll time without completing a challenge."
         else -> "Perform pushups to earn scroll time."
     }
 }
@@ -756,12 +827,12 @@ private fun ModeCard(
     onClick: () -> Unit
 ) {
     val animatedBorderColor by animateColorAsState(
-        targetValue = if (isActive) accentColor else accentColor.copy(alpha = 0.3f),
+        targetValue = if (isActive) accentColor else accentColor.copy(alpha = 0.45f),
         animationSpec = tween(300),
         label = "borderColor"
     )
     val animatedBgColor by animateColorAsState(
-        targetValue = if (isActive) bgAlpha else accentColor.copy(alpha = 0.04f),
+        targetValue = if (isActive) bgAlpha else accentColor.copy(alpha = 0.08f),
         animationSpec = tween(300),
         label = "bgColor"
     )
@@ -791,13 +862,13 @@ private fun ModeCard(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (isActive) accentColor.copy(alpha = 0.15f) else accentColor.copy(alpha = 0.08f)),
+                    .background(if (isActive) accentColor.copy(alpha = 0.15f) else accentColor.copy(alpha = 0.10f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (isActive) accentColor else accentColor.copy(alpha = 0.6f),
+                    tint = if (isActive) accentColor else accentColor.copy(alpha = 0.75f),
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -837,7 +908,7 @@ private fun ModeCard(
 
         Text(
             text = description,
-            color = if (isActive) TextSecondary else TextMuted,
+            color = if (isActive) TextSecondary else TextSecondary.copy(alpha = 0.85f),
             fontSize = 13.5.sp,
             lineHeight = 19.sp
         )
@@ -995,7 +1066,7 @@ private fun DowngradeConfirmationDialog(
                     Checkbox(
                         checked = autoDowngradeAtMidnight,
                         onCheckedChange = onAutoDowngradeChange,
-                        colors = CheckboxDefaults.colors(checkedColor = Amber500)
+                        colors = CheckboxDefaults.colors(checkedColor = ModeStrictAccent)
                     )
                     Text(
                         text = "Auto downgrade next day",
@@ -1018,7 +1089,7 @@ private fun DowngradeConfirmationDialog(
                     }
                     Text(
                         text = "You can downgrade in $timeString...",
-                        color = Amber500,
+                        color = ModeStrictAccent,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,

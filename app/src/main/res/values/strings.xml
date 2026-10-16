@@ -2,4 +2,6 @@
     <string name="app_name">ReelsRot</string>
     <string name="app_launcher_name">ReelsRot</string>
     <string name="accessibility_service_description">Used by ReelsRot to detect when you are scrolling addictive short-form content like Reels or Shorts, in order to help you regain focus and stop doomscrolling.</string>
+    <!-- Web Client ID for Google Sign-In (Can also be provided via Firebase google-services.json) -->
+    <string name="google_web_client_id" translatable="false">YOUR_WEB_CLIENT_ID</string>
 </resources>

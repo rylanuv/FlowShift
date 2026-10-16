@@ -35,26 +35,31 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.paint
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.flow.shift.core.designsystem.AppIcon
 import com.flow.shift.feature.dashboard.formatDurationShort
+import com.flow.shift.feature.modes.BlockingMode
 import com.flow.shift.theme.*
-
-private val GlassBorderBrush = Brush.linearGradient(
-    colors = listOf(
-        Color.White.copy(alpha = 0.25f),
-        Color.White.copy(alpha = 0.05f)
-    )
-)
 
 @Composable
 fun StatisticsScreen(
     onNavigateBack: () -> Unit,
+    showBackground: Boolean = false,
     viewModel: StatisticsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedPeriod by viewModel.selectedPeriod.collectAsStateWithLifecycle()
+    val blockingModeStr by viewModel.blockingMode.collectAsStateWithLifecycle()
+    val currentMode = BlockingMode.fromString(blockingModeStr)
+    val modeAccent = when (currentMode) {
+        BlockingMode.EASY -> ModeEasyAccent
+        BlockingMode.STRICT -> ModeStrictAccent
+        BlockingMode.HARDCORE -> ModeHardcoreAccent
+    }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -72,13 +77,25 @@ fun StatisticsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SurfaceBlack)
+            .then(
+                if (showBackground) {
+                    Modifier
+                        .paint(
+                            painter = painterResource(id = currentMode.backgroundImageRes),
+                            contentScale = ContentScale.Crop,
+                            alpha = currentMode.backgroundAlpha
+                        )
+                        .background(SurfaceBlack.copy(alpha = 0.35f))
+                } else {
+                    Modifier.background(Color.Transparent)
+                }
+            )
     ) {
         when (val state = uiState) {
             is StatisticsUiState.Loading -> {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
-                    color = Amber500
+                    color = modeAccent
                 )
             }
             is StatisticsUiState.Success -> {
@@ -86,7 +103,9 @@ fun StatisticsScreen(
                     metrics = state.metrics,
                     selectedPeriod = selectedPeriod,
                     onSelectPeriod = { viewModel.setTimePeriod(it) },
-                    onNavigateBack = onNavigateBack
+                    onNavigateBack = onNavigateBack,
+                    showBackButton = showBackground,
+                    accentColor = modeAccent
                 )
             }
         }
@@ -98,7 +117,9 @@ private fun StatisticsContent(
     metrics: StatisticsMetrics,
     selectedPeriod: StatsTimePeriod,
     onSelectPeriod: (StatsTimePeriod) -> Unit,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    showBackButton: Boolean,
+    accentColor: Color
 ) {
     val context = LocalContext.current
     var selectedChartIndex by remember { mutableIntStateOf(-1) }
@@ -116,36 +137,39 @@ private fun StatisticsContent(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                IconButton(
-                    onClick = onNavigateBack,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .border(1.dp, GlassBorderBrush, RoundedCornerShape(12.dp))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                if (showBackButton) {
+                    IconButton(
+                        onClick = onNavigateBack,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(1.dp, GlassBorderBrush, RoundedCornerShape(12.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
                 }
-                Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text(
                         text = "Statistics",
                         color = TextPrimary,
                         fontFamily = AppFontFamily,
-                        fontSize = 24.sp,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.5).sp
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Your screen freedom breakdown",
-                        color = TextMuted,
+                        color = TextSecondary,
                         fontFamily = AppFontFamily,
-                        fontSize = 13.sp
+                        fontSize = 14.sp
                     )
                 }
             }
@@ -155,6 +179,7 @@ private fun StatisticsContent(
         item {
             PeriodSelector(
                 selectedPeriod = selectedPeriod,
+                accentColor = accentColor,
                 onPeriodSelected = {
                     selectedChartIndex = -1
                     onSelectPeriod(it)
@@ -166,6 +191,7 @@ private fun StatisticsContent(
         if (!metrics.hasUsageAccess) {
             item {
                 UsagePermissionBanner(
+                    accentColor = accentColor,
                     onGrantClick = {
                         val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -186,7 +212,8 @@ private fun StatisticsContent(
         item {
             HeroScreenTimeCard(
                 metrics = metrics,
-                selectedPeriod = selectedPeriod
+                selectedPeriod = selectedPeriod,
+                accentColor = accentColor
             )
         }
 
@@ -209,7 +236,7 @@ private fun StatisticsContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
-                        .background(SurfaceCard.copy(alpha = 0.55f))
+                        .background(SurfaceCard.copy(alpha = 0.35f))
                         .border(1.dp, GlassBorderBrush, RoundedCornerShape(20.dp))
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
@@ -217,13 +244,14 @@ private fun StatisticsContent(
                     Text(
                         text = "No protected apps configured yet",
                         color = TextMuted,
+                        fontFamily = AppFontFamily,
                         fontSize = 14.sp
                     )
                 }
             }
         } else {
             items(metrics.appStatsList, key = { it.packageName }) { appStat ->
-                AppStatRow(stat = appStat)
+                AppStatRow(stat = appStat, accentColor = accentColor)
             }
         }
 
@@ -232,7 +260,8 @@ private fun StatisticsContent(
             InterventionInsightsCard(
                 distribution = metrics.timeOfDayDistribution,
                 mostBlockedApp = metrics.mostBlockedAppName,
-                totalInterventions = metrics.totalInterventions
+                totalInterventions = metrics.totalInterventions,
+                accentColor = accentColor
             )
         }
 
@@ -243,6 +272,7 @@ private fun StatisticsContent(
                     dailyItems = metrics.dailyUsageList,
                     averageUsageMillis = metrics.averageDailyUsageMillis,
                     selectedIndex = selectedChartIndex,
+                    accentColor = accentColor,
                     onSelectIndex = { selectedChartIndex = it }
                 )
             }
@@ -252,7 +282,8 @@ private fun StatisticsContent(
         item {
             InsightCardsSection(
                 metrics = metrics,
-                periodSuffix = periodSuffix
+                periodSuffix = periodSuffix,
+                accentColor = accentColor
             )
         }
     }
@@ -262,13 +293,14 @@ private fun StatisticsContent(
 @Composable
 private fun PeriodSelector(
     selectedPeriod: StatsTimePeriod,
+    accentColor: Color,
     onPeriodSelected: (StatsTimePeriod) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceCard.copy(alpha = 0.6f))
+            .background(SurfaceCard.copy(alpha = 0.35f))
             .border(1.dp, GlassBorderBrush, RoundedCornerShape(16.dp))
             .padding(4.dp)
     ) {
@@ -281,15 +313,15 @@ private fun PeriodSelector(
         periods.forEach { (period, title) ->
             val isSelected = selectedPeriod == period
             val bgColor by animateColorAsState(
-                targetValue = if (isSelected) Amber500.copy(alpha = 0.2f) else Color.Transparent,
+                targetValue = if (isSelected) accentColor.copy(alpha = 0.2f) else Color.Transparent,
                 label = "periodBg"
             )
             val textColor by animateColorAsState(
-                targetValue = if (isSelected) Amber500 else TextSecondary,
+                targetValue = if (isSelected) accentColor else TextSecondary,
                 label = "periodText"
             )
             val borderColor by animateColorAsState(
-                targetValue = if (isSelected) Amber500.copy(alpha = 0.4f) else Color.Transparent,
+                targetValue = if (isSelected) accentColor.copy(alpha = 0.4f) else Color.Transparent,
                 label = "periodBorder"
             )
 
@@ -317,20 +349,20 @@ private fun PeriodSelector(
 
 // ── Usage Permission Banner ──
 @Composable
-private fun UsagePermissionBanner(onGrantClick: () -> Unit) {
+private fun UsagePermissionBanner(accentColor: Color, onGrantClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Amber500.copy(alpha = 0.12f))
-            .border(1.dp, Amber500.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+            .background(accentColor.copy(alpha = 0.12f))
+            .border(1.dp, accentColor.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = Icons.Default.Warning,
             contentDescription = null,
-            tint = Amber500,
+            tint = accentColor,
             modifier = Modifier.size(24.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
@@ -345,15 +377,16 @@ private fun UsagePermissionBanner(onGrantClick: () -> Unit) {
             Text(
                 text = "Grant access to calculate screen time on protected apps.",
                 color = TextSecondary,
+                fontFamily = AppFontFamily,
                 fontSize = 12.sp
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
         TextButton(
             onClick = onGrantClick,
-            colors = ButtonDefaults.textButtonColors(contentColor = Amber500)
+            colors = ButtonDefaults.textButtonColors(contentColor = accentColor)
         ) {
-            Text("Grant", fontWeight = FontWeight.Bold)
+            Text("Grant", fontWeight = FontWeight.Bold, fontFamily = AppFontFamily)
         }
     }
 }
@@ -373,7 +406,8 @@ private fun formatDurationHrMin(millis: Long): String {
 @Composable
 private fun HeroScreenTimeCard(
     metrics: StatisticsMetrics,
-    selectedPeriod: StatsTimePeriod
+    selectedPeriod: StatsTimePeriod,
+    accentColor: Color
 ) {
     val durationText = if (!metrics.hasUsageAccess) "--" else formatDurationHrMin(metrics.totalProtectedUsageMillis)
     val subtitleText = when (selectedPeriod) {
@@ -389,14 +423,14 @@ private fun HeroScreenTimeCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(SurfaceCard.copy(alpha = 0.55f))
+            .background(SurfaceCard.copy(alpha = 0.35f))
             .border(1.dp, GlassBorderBrush, RoundedCornerShape(24.dp))
             .padding(24.dp)
     ) {
         Column {
             Text(
                 text = "SCROLLING HAS COSTED YOU",
-                color = Amber500,
+                color = accentColor,
                 fontFamily = AppFontFamily,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -433,7 +467,7 @@ private fun StatGridCard(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(SurfaceCard.copy(alpha = 0.55f))
+            .background(SurfaceCard.copy(alpha = 0.35f))
             .border(1.dp, GlassBorderBrush, RoundedCornerShape(18.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.SpaceBetween
@@ -456,7 +490,8 @@ private fun StatGridCard(
 @Composable
 private fun InsightCardsSection(
     metrics: StatisticsMetrics,
-    periodSuffix: String
+    periodSuffix: String,
+    accentColor: Color
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // ── Row 1: Breaks & Additional Time ──
@@ -497,7 +532,7 @@ private fun InsightCardsSection(
                     .weight(1f)
                     .height(98.dp),
                 label = "ADDITIONAL TIME SPENT",
-                labelColor = Amber500
+                labelColor = accentColor
             ) {
                 Column {
                     Text(
@@ -530,7 +565,7 @@ private fun InsightCardsSection(
                     .weight(1f)
                     .height(98.dp),
                 label = "REELS SCROLLED",
-                labelColor = Amber500
+                labelColor = accentColor
             ) {
                 Column {
                     Text(
@@ -587,6 +622,7 @@ private fun DailyUsageChartCard(
     dailyItems: List<DailyUsageItem>,
     averageUsageMillis: Long,
     selectedIndex: Int,
+    accentColor: Color,
     onSelectIndex: (Int) -> Unit
 ) {
     val isMonthly = dailyItems.size > 7
@@ -596,7 +632,7 @@ private fun DailyUsageChartCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(SurfaceCard.copy(alpha = 0.55f))
+            .background(SurfaceCard.copy(alpha = 0.35f))
             .border(1.dp, GlassBorderBrush, RoundedCornerShape(24.dp))
             .padding(20.dp)
     ) {
@@ -608,7 +644,7 @@ private fun DailyUsageChartCard(
             Column {
                 Text(
                     text = "DAILY SCREEN TIME",
-                    color = Amber500,
+                    color = accentColor,
                     fontFamily = AppFontFamily,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -634,7 +670,7 @@ private fun DailyUsageChartCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "$dateLabel: ${formatDurationShort(item.usageMillis)}",
-                        color = Amber500,
+                        color = accentColor,
                         fontFamily = AppFontFamily,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
@@ -705,8 +741,8 @@ private fun DailyUsageChartCard(
 
                         val isHighlighted = (selectedIndex == index) || (selectedIndex == -1 && item.isToday)
                         val barColor = when {
-                            selectedIndex == index -> Amber500
-                            item.isToday -> Amber500
+                            selectedIndex == index -> accentColor
+                            item.isToday -> accentColor
                             else -> Color.White.copy(alpha = 0.18f)
                         }
 
@@ -744,7 +780,8 @@ private fun DailyUsageChartCard(
                                 val item = dailyItems[idx]
                                 Text(
                                     text = if (item.isToday) "Today" else monthDayFormat.format(java.util.Date(item.dateMillis)),
-                                    color = if (item.isToday) Amber500 else TextMuted,
+                                    color = if (item.isToday) accentColor else TextMuted,
+                                    fontFamily = AppFontFamily,
                                     fontSize = 10.sp,
                                     fontWeight = if (item.isToday) FontWeight.Bold else FontWeight.Normal
                                 )
@@ -765,13 +802,15 @@ private fun DailyUsageChartCard(
                             ) {
                                 Text(
                                     text = item.dayLabel,
-                                    color = if (isHighlighted) Amber500 else TextMuted,
+                                    color = if (isHighlighted) accentColor else TextMuted,
+                                    fontFamily = AppFontFamily,
                                     fontSize = 11.sp,
                                     fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Normal
                                 )
                                 Text(
                                     text = item.dateNumber,
                                     color = if (isHighlighted) TextPrimary else TextSecondary.copy(alpha = 0.6f),
+                                    fontFamily = AppFontFamily,
                                     fontSize = 10.sp,
                                     fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Normal
                                 )
@@ -789,19 +828,20 @@ private fun DailyUsageChartCard(
 private fun InterventionInsightsCard(
     distribution: TimeOfDayDistribution,
     mostBlockedApp: String?,
-    totalInterventions: Int
+    totalInterventions: Int,
+    accentColor: Color
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(SurfaceCard.copy(alpha = 0.55f))
+            .background(SurfaceCard.copy(alpha = 0.35f))
             .border(1.dp, GlassBorderBrush, RoundedCornerShape(24.dp))
             .padding(20.dp)
     ) {
         Text(
             text = "VULNERABLE HOURS",
-            color = Amber500,
+            color = accentColor,
             fontFamily = AppFontFamily,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
@@ -827,6 +867,7 @@ private fun InterventionInsightsCard(
                 Text(
                     text = "No interventions recorded for this period. Clean streak!",
                     color = TextMuted,
+                    fontFamily = AppFontFamily,
                     fontSize = 13.sp
                 )
             }
@@ -858,10 +899,10 @@ private fun InterventionInsightsCard(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(if (isPeak) Amber500.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.04f))
+                            .background(if (isPeak) accentColor.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.04f))
                             .border(
                                 1.dp,
-                                if (isPeak) Amber500.copy(alpha = 0.35f) else Color.Transparent,
+                                if (isPeak) accentColor.copy(alpha = 0.35f) else Color.Transparent,
                                 RoundedCornerShape(14.dp)
                             )
                             .padding(vertical = 12.dp, horizontal = 4.dp),
@@ -869,7 +910,7 @@ private fun InterventionInsightsCard(
                     ) {
                         Text(
                             text = count.toString(),
-                            color = if (isPeak) Amber500 else TextPrimary,
+                            color = if (isPeak) accentColor else TextPrimary,
                             fontFamily = AppFontFamily,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
@@ -888,7 +929,7 @@ private fun InterventionInsightsCard(
                                     .fillMaxHeight()
                                     .fillMaxWidth(fraction)
                                     .clip(RoundedCornerShape(2.dp))
-                                    .background(if (isPeak) Amber500 else Color.White.copy(alpha = 0.3f))
+                                    .background(if (isPeak) accentColor else Color.White.copy(alpha = 0.3f))
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -916,13 +957,14 @@ private fun InterventionInsightsCard(
                     Icon(
                         imageVector = Icons.Default.Shield,
                         contentDescription = null,
-                        tint = Amber500,
+                        tint = accentColor,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Most blocked app: $mostBlockedApp",
                         color = TextSecondary,
+                        fontFamily = AppFontFamily,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -934,12 +976,12 @@ private fun InterventionInsightsCard(
 
 // ── Protected App Row Item ──
 @Composable
-private fun AppStatRow(stat: AppStatItem) {
+private fun AppStatRow(stat: AppStatItem, accentColor: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceCard.copy(alpha = 0.55f))
+            .background(SurfaceCard.copy(alpha = 0.35f))
             .border(1.dp, GlassBorderBrush, RoundedCornerShape(20.dp))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -996,7 +1038,7 @@ private fun AppStatRow(stat: AppStatItem) {
                         .clip(RoundedCornerShape(3.dp))
                         .background(
                             Brush.horizontalGradient(
-                                listOf(Amber500.copy(alpha = 0.8f), Amber500)
+                                listOf(accentColor.copy(alpha = 0.8f), accentColor)
                             )
                         )
                 )
@@ -1027,12 +1069,12 @@ private fun AppStatRow(stat: AppStatItem) {
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(if (stat.reelCount > 0) Amber500.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f))
+                            .background(if (stat.reelCount > 0) accentColor.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = "${stat.reelCount} $label",
-                            color = if (stat.reelCount > 0) Amber500 else TextMuted,
+                            color = if (stat.reelCount > 0) accentColor else TextMuted,
                             fontFamily = AppFontFamily,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold

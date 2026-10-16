@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -96,15 +97,17 @@ import kotlinx.coroutines.launch
  * Shared background layer: the onboarding image with blur + dark scrim overlay.
  */
 @Composable
-private fun OnboardingBackground() {
+private fun OnboardingBackground(imageAlpha: Float = 1f, centerDim: Float = 0f) {
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
-            painter = painterResource(id = R.drawable.onboarding_bg_2),
+            painter = painterResource(id = R.drawable.onboarding_bg_3),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = imageAlpha }
         )
-        // Dark scrim for contrast
+        // Dark scrim — lighter in the center to let the hourglass glow through
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -112,12 +115,45 @@ private fun OnboardingBackground() {
                     Brush.verticalGradient(
                         colors = listOf(
                             Color.Black.copy(alpha = 0.55f),
-                            Color.Black.copy(alpha = 0.40f),
-                            Color.Black.copy(alpha = 0.60f)
+                            Color.Black.copy(alpha = 0.05f),
+                            Color.Black.copy(alpha = 0.55f)
                         )
                     )
                 )
         )
+        // Radial cyan glow in the center
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        ModeStrictAccent.copy(alpha = 0.22f),
+                        ModeStrictAccent.copy(alpha = 0.08f),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width * 0.5f, size.height * 0.5f),
+                    radius = size.width * 0.7f
+                ),
+                center = Offset(size.width * 0.5f, size.height * 0.5f),
+                radius = size.width * 0.7f
+            )
+            // Large radial dark mask — dims the center (hourglass) on non-welcome steps
+            if (centerDim > 0f) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = centerDim),
+                            Color.Black.copy(alpha = centerDim * 0.6f),
+                            Color.Black.copy(alpha = centerDim * 0.2f),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width * 0.5f, size.height * 0.5f),
+                        radius = size.height * 0.7f
+                    ),
+                    center = Offset(size.width * 0.5f, size.height * 0.5f),
+                    radius = size.height * 0.7f
+                )
+            }
+        }
     }
 }
 
@@ -139,6 +175,8 @@ fun OnboardingScreen(
     val context = LocalContext.current
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var hasAccessibilityPermission by remember { mutableStateOf(hasAccessibilityPermission(context)) }
+    var hasBatteryOptimizationPermission by remember { mutableStateOf(isBatteryOptimizationExempt(context)) }
+    var hasUserCancelledPermissions by rememberSaveable { mutableStateOf(false) }
     val manufacturer = remember { Build.MANUFACTURER.lowercase() }
     val brand = remember { Build.BRAND.lowercase() }
     val needsAutostartGuidance = remember {
@@ -161,6 +199,7 @@ fun OnboardingScreen(
         {
             hasOverlayPermission = Settings.canDrawOverlays(context)
             hasAccessibilityPermission = hasAccessibilityPermission(context)
+            hasBatteryOptimizationPermission = isBatteryOptimizationExempt(context)
             if (needsAutostartGuidance) {
                 if (autostartCheckSupported) {
                     hasAutostartPermission = hasAutostartPermission(context)
@@ -197,18 +236,32 @@ fun OnboardingScreen(
     }
 
     // Can proceed to next step?
+    val allPermissionsGranted = hasAccessibilityPermission &&
+        hasOverlayPermission &&
+        hasBatteryOptimizationPermission &&
+        (!needsAutostartGuidance || hasAutostartPermission)
     val canProceed = when (currentStep) {
         0 -> true // Welcome — always
         1 -> selectedDailyLimit > 0 // Daily limit must be positive
         2 -> true // Apps — optional, can skip
-        3 -> hasAccessibilityPermission && hasOverlayPermission && hasAutostartPermission
+        3 -> allPermissionsGranted
         4 -> true // All set — always
         else -> false
     }
 
     // Full-bleed background image behind everything
+    val bgAlpha by animateFloatAsState(
+        targetValue = if (currentStep == 0) 1f else 0.6f,
+        animationSpec = tween(400, easing = FastOutSlowInEasing),
+        label = "bgAlpha"
+    )
+    val centerDim by animateFloatAsState(
+        targetValue = if (currentStep == 0) 0f else 0.95f,
+        animationSpec = tween(400, easing = FastOutSlowInEasing),
+        label = "centerDim"
+    )
     Box(modifier = Modifier.fillMaxSize()) {
-        OnboardingBackground()
+        OnboardingBackground(imageAlpha = bgAlpha, centerDim = centerDim)
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -221,7 +274,8 @@ fun OnboardingScreen(
                 ) {
                     OnboardingTopBar(
                         currentStep = currentStep,
-                        totalSteps = 3,
+                        totalSteps = 4,
+                        isCurrentStepCompleted = (currentStep == 3 && canProceed),
                         onBackClick = { viewModel.previousStep() }
                     )
                 }
@@ -235,7 +289,11 @@ fun OnboardingScreen(
                     OnboardingBottomBar(
                         currentStep = currentStep,
                         canProceed = canProceed,
-                        onNextClick = { viewModel.nextStep() }
+                        onNextClick = {
+                            if (canProceed) {
+                                viewModel.nextStep()
+                            }
+                        }
                     )
                 }
             }
@@ -267,8 +325,12 @@ fun OnboardingScreen(
                             context = context,
                             hasAccessibilityPermission = hasAccessibilityPermission,
                             hasOverlayPermission = hasOverlayPermission,
+                            hasBatteryOptimizationPermission = hasBatteryOptimizationPermission,
                             hasAutostartPermission = hasAutostartPermission,
                             showAutostartGuidance = needsAutostartGuidance,
+                            hasUserCancelled = hasUserCancelledPermissions,
+                            onUserCancelled = { hasUserCancelledPermissions = true },
+                            onResetCancelled = { hasUserCancelledPermissions = false },
                             onRefreshPermissions = refreshPermissions,
                             onAutostartClick = {
                                 userInteractedAutostart = true
@@ -299,6 +361,7 @@ fun OnboardingScreen(
 private fun OnboardingTopBar(
     currentStep: Int,
     totalSteps: Int,
+    isCurrentStepCompleted: Boolean = false,
     onBackClick: () -> Unit
 ) {
     Column(
@@ -327,6 +390,7 @@ private fun OnboardingTopBar(
                 val fraction by animateFloatAsState(
                     targetValue = when {
                         index < currentStep -> 1f
+                        index == currentStep && isCurrentStepCompleted -> 1f
                         else -> 0f
                     },
                     animationSpec = tween(400, easing = FastOutSlowInEasing),
@@ -344,7 +408,7 @@ private fun OnboardingTopBar(
                             .fillMaxHeight()
                             .fillMaxWidth(fraction)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(Amber500)
+                            .background(ModeStrictAccent)
                     )
                 }
             }
@@ -384,11 +448,11 @@ private fun OnboardingBottomBar(
                 .shadow(
                     elevation = if (canProceed) 16.dp else 0.dp,
                     shape = CircleShape,
-                    spotColor = Color(0xFFFF8C00),
-                    ambientColor = Color(0xFFFF8C00)
+                    spotColor = ModeStrictAccent.copy(alpha = 0.5f),
+                    ambientColor = ModeStrictAccent.copy(alpha = 0.5f)
                 ),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFFFFA000),
+                containerColor = ModeStrictAccent,
                 contentColor = Color.Black,
                 disabledContainerColor = Color.White.copy(alpha = 0.08f),
                 disabledContentColor = TextMuted
@@ -443,137 +507,81 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
         }
     }
 
-    // Entry animation
+    // Entry animations — staggered fade + slide up
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
-    val iconAlpha by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(800, delayMillis = 150),
-        label = "iconAlpha"
+
+    val titleOffsetY by animateFloatAsState(
+        targetValue = if (visible) 0f else 40f,
+        animationSpec = tween(900, delayMillis = 200, easing = FastOutSlowInEasing),
+        label = "titleOffsetY"
     )
     val titleAlpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(800, delayMillis = 300),
+        animationSpec = tween(900, delayMillis = 200),
         label = "titleAlpha"
+    )
+    val subtitleOffsetY by animateFloatAsState(
+        targetValue = if (visible) 0f else 30f,
+        animationSpec = tween(800, delayMillis = 500, easing = FastOutSlowInEasing),
+        label = "subtitleOffsetY"
     )
     val subtitleAlpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(800, delayMillis = 600),
+        animationSpec = tween(800, delayMillis = 500),
         label = "subtitleAlpha"
     )
     val buttonAlpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(800, delayMillis = 900),
+        animationSpec = tween(800, delayMillis = 700),
         label = "buttonAlpha"
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Title + subtitle — left-aligned, positioned in upper portion
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(horizontal = 32.dp)
-                .padding(top = 32.dp, bottom = 110.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 28.dp)
+                .padding(top = 80.dp),
+            horizontalAlignment = Alignment.Start
         ) {
-            Spacer(modifier = Modifier.weight(1.35f))
-
-            // Watch icon without glow
-            Canvas(
-                modifier = Modifier
-                    .size(82.dp)
-                    .graphicsLayer {
-                        alpha = iconAlpha
-                        compositingStrategy = CompositingStrategy.Offscreen
-                    }
-            ) {
-                val w = size.width
-                val h = size.height
-                val gradient = Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFFFFC021),
-                        Color(0xFFFF8800)
-                    )
-                )
-
-                // Top crown button
-                drawRoundRect(
-                    brush = gradient,
-                    topLeft = Offset(w * 0.36f, h * 0.08f),
-                    size = Size(w * 0.28f, h * 0.07f),
-                    cornerRadius = CornerRadius(h * 0.035f)
-                )
-
-                // Stem
-                drawRect(
-                    brush = gradient,
-                    topLeft = Offset(w * 0.46f, h * 0.14f),
-                    size = Size(w * 0.08f, h * 0.06f)
-                )
-
-                // 45-degree top-right stopwatch button
-                withTransform({
-                    rotate(degrees = 42f, pivot = Offset(w * 0.5f, h * 0.55f))
-                }) {
-                    drawRoundRect(
-                        brush = gradient,
-                        topLeft = Offset(w * 0.46f, h * 0.11f),
-                        size = Size(w * 0.08f, h * 0.08f),
-                        cornerRadius = CornerRadius(w * 0.03f)
-                    )
-                }
-
-                // Main circular body
-                drawCircle(
-                    brush = gradient,
-                    radius = w * 0.36f,
-                    center = Offset(w * 0.5f, h * 0.55f)
-                )
-
-                // Center vertical slot cutout (transparent)
-                drawRoundRect(
-                    color = Color.Black,
-                    blendMode = BlendMode.Clear,
-                    topLeft = Offset(w * 0.465f, h * 0.38f),
-                    size = Size(w * 0.07f, h * 0.17f),
-                    cornerRadius = CornerRadius(w * 0.035f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
+            // "Reels" on first line, "in control" on second — large hero typography
             Text(
                 text = buildAnnotatedString {
-                    withStyle(style = SpanStyle(color = Color(0xFFFFA000))) {
-                        append("Reels")
+                    withStyle(style = SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
+                        append("Reels\n")
                     }
-                    withStyle(style = SpanStyle(color = Color.White)) {
-                        append(" in control")
+                    withStyle(style = SpanStyle(color = ModeStrictAccent, fontWeight = FontWeight.ExtraBold)) {
+                        append("in control")
                     }
                 },
                 fontFamily = AppFontFamily,
-                fontSize = 36.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.graphicsLayer { alpha = titleAlpha }
+                fontSize = 44.sp,
+                lineHeight = 50.sp,
+                modifier = Modifier.graphicsLayer {
+                    alpha = titleAlpha
+                    translationY = titleOffsetY
+                }
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = "Set a limit. Watch mindfully.\nGet your time back.",
-                color = Color.White.copy(alpha = 0.75f),
+                color = Color.White.copy(alpha = 0.65f),
                 fontFamily = AppFontFamily,
                 fontSize = 16.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 22.sp,
-                modifier = Modifier.graphicsLayer { alpha = subtitleAlpha }
+                lineHeight = 24.sp,
+                modifier = Modifier.graphicsLayer {
+                    alpha = subtitleAlpha
+                    translationY = subtitleOffsetY
+                }
             )
-
-            Spacer(modifier = Modifier.weight(1.1f))
         }
 
+        // CTA button — original solid aqua pill style
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -590,11 +598,11 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
                     .shadow(
                         elevation = 16.dp,
                         shape = CircleShape,
-                        spotColor = Color(0xFFFF8C00),
-                        ambientColor = Color(0xFFFF8C00)
+                        spotColor = ModeStrictAccent.copy(alpha = 0.5f),
+                        ambientColor = ModeStrictAccent.copy(alpha = 0.5f)
                     ),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFFA000),
+                    containerColor = ModeStrictAccent,
                     contentColor = Color.Black
                 ),
                 shape = CircleShape
@@ -688,7 +696,7 @@ private fun SetDailyLimitStep(
                 textStyle = TextStyle(
                     fontFamily = AppFontFamily,
                     fontSize = 44.sp,
-                    color = Amber500,
+                    color = ModeStrictAccent,
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.Bold
                 ),
@@ -700,7 +708,7 @@ private fun SetDailyLimitStep(
                     onDone = { focusManager.clearFocus() }
                 ),
                 singleLine = true,
-                cursorBrush = SolidColor(Amber500),
+                cursorBrush = SolidColor(ModeStrictAccent),
                 decorationBox = { innerTextField ->
                     Box(
                         contentAlignment = Alignment.Center,
@@ -711,7 +719,7 @@ private fun SetDailyLimitStep(
                             .background(Color.White.copy(alpha = 0.08f))
                             .border(
                                 width = 2.dp,
-                                color = Amber500,
+                                color = ModeStrictAccent,
                                 shape = RoundedCornerShape(16.dp)
                             )
                             .padding(horizontal = 16.dp)
@@ -739,7 +747,7 @@ private fun SetDailyLimitStep(
                     fontFamily = AppFontFamily,
                     fontSize = 52.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Amber500,
+                    color = ModeStrictAccent,
                     textAlign = TextAlign.Center
                 )
             }
@@ -757,7 +765,7 @@ private fun SetDailyLimitStep(
 
         Spacer(modifier = Modifier.height(36.dp))
 
-        val selectedIndex = if (isCustom) presetValues.size else presetValues.indexOf(selectedLimit).takeIf { it >= 0 } ?: 6
+        val selectedIndex = if (isCustom) presetValues.size else presetValues.indexOf(selectedLimit).takeIf { it >= 0 } ?: (presetValues.indexOf(200).takeIf { it >= 0 } ?: 0)
 
         DailyLimitPicker(
             values = presetValues,
@@ -879,7 +887,7 @@ private fun DailyLimitChip(
             .height(72.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(
-                if (isSelected) Amber500
+                if (isSelected) ModeStrictAccent
                 else Color.White.copy(alpha = 0.08f)
             )
             .border(
@@ -922,7 +930,7 @@ private fun CustomDailyLimitChip(
             .height(72.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(
-                if (isSelected) Amber500
+                if (isSelected) ModeStrictAccent
                 else Color.White.copy(alpha = 0.08f)
             )
             .border(
@@ -1146,7 +1154,9 @@ private fun AppSelectionStep(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     
     val onSearchQueryChange: (String) -> Unit = { viewModel.updateSearchQuery(it) }
-    val onToggleApp: (OnboardingAppItem, Boolean) -> Unit = { app, blocked -> viewModel.toggleAppBlocked(app, blocked) }
+    val onToggleApp: (OnboardingAppItem, Boolean) -> Unit = remember(viewModel) {
+        { app, blocked -> viewModel.toggleAppBlocked(app, blocked) }
+    }
 
     var isMoreAppsExpanded by remember { mutableStateOf(false) }
 
@@ -1208,11 +1218,11 @@ private fun AppSelectionStep(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Amber500,
+                    focusedBorderColor = ModeStrictAccent,
                     unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
                     focusedContainerColor = Color.White.copy(alpha = 0.08f),
                     unfocusedContainerColor = Color.White.copy(alpha = 0.06f),
-                    cursorColor = Amber500,
+                    cursorColor = ModeStrictAccent,
                     focusedTextColor = TextPrimary,
                     unfocusedTextColor = TextPrimary
                 )
@@ -1229,7 +1239,7 @@ private fun AppSelectionStep(
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = Amber500)
+                CircularProgressIndicator(color = ModeStrictAccent)
             }
         } else {
             LazyColumn(
@@ -1242,14 +1252,14 @@ private fun AppSelectionStep(
                     items(apps, key = { it.packageName }, contentType = { "app_item" }) { app ->
                         OnboardingAppListItem(
                             app = app,
-                            onToggle = { isBlocked -> onToggleApp(app, isBlocked) }
+                            onToggle = onToggleApp
                         )
                     }
                 } else {
                     items(topApps, key = { it.packageName }, contentType = { "app_item" }) { app ->
                         OnboardingAppListItem(
                             app = app,
-                            onToggle = { isBlocked -> onToggleApp(app, isBlocked) }
+                            onToggle = onToggleApp
                         )
                     }
                     if (otherApps.isNotEmpty()) {
@@ -1265,7 +1275,7 @@ private fun AppSelectionStep(
                             items(otherApps, key = { it.packageName }, contentType = { "app_item" }) { app ->
                                 OnboardingAppListItem(
                                     app = app,
-                                    onToggle = { isBlocked -> onToggleApp(app, isBlocked) }
+                                    onToggle = onToggleApp
                                 )
                             }
                         }
@@ -1301,7 +1311,7 @@ private fun ExpandableAppsHeader(
             Icon(
                 imageVector = Icons.Default.Apps,
                 contentDescription = null,
-                tint = Amber500,
+                tint = ModeStrictAccent,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -1325,7 +1335,7 @@ private fun ExpandableAppsHeader(
 @Composable
 private fun OnboardingAppListItem(
     app: OnboardingAppItem,
-    onToggle: (Boolean) -> Unit
+    onToggle: (OnboardingAppItem, Boolean) -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -1357,10 +1367,10 @@ private fun OnboardingAppListItem(
 
         Switch(
             checked = app.isBlocked,
-            onCheckedChange = onToggle,
+            onCheckedChange = { isChecked -> onToggle(app, isChecked) },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = Amber500,
+                checkedTrackColor = ModeStrictAccent,
                 uncheckedThumbColor = Color.White.copy(alpha = 0.7f),
                 uncheckedTrackColor = Color.White.copy(alpha = 0.1f),
                 uncheckedBorderColor = Color.Transparent
@@ -1373,26 +1383,83 @@ private fun OnboardingAppListItem(
 //  STEP 5: PERMISSIONS
 // ════════════════════════════════════════════════════════════════════
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PermissionsStep(
     context: Context,
     hasAccessibilityPermission: Boolean,
     hasOverlayPermission: Boolean,
+    hasBatteryOptimizationPermission: Boolean,
     hasAutostartPermission: Boolean,
     showAutostartGuidance: Boolean,
+    hasUserCancelled: Boolean,
+    onUserCancelled: () -> Unit,
+    onResetCancelled: () -> Unit,
     onRefreshPermissions: () -> Unit,
     onAutostartClick: () -> Unit
 ) {
-    var showAccessibilityDialog by remember { mutableStateOf(false) }
-    var accessibilityDismissed by remember { mutableStateOf(false) }
-    var hasAttemptedAccessibility by remember { mutableStateOf(false) }
-    var hasAttemptedOverlay by remember { mutableStateOf(false) }
-    var hasAttemptedAutostart by remember { mutableStateOf(false) }
+    var showWhyPermissionsSheet by rememberSaveable { mutableStateOf(false) }
+    var showAccessibilityDialog by rememberSaveable { mutableStateOf(false) }
+    var accessibilityDismissed by rememberSaveable { mutableStateOf(false) }
+    var hasAttemptedAccessibility by rememberSaveable { mutableStateOf(false) }
+    var hasAttemptedOverlay by rememberSaveable { mutableStateOf(false) }
+    var hasAttemptedBatteryOpt by rememberSaveable { mutableStateOf(false) }
+    var hasAttemptedAutostart by rememberSaveable { mutableStateOf(false) }
+
+    var waitingForOverlay by rememberSaveable { mutableStateOf(false) }
+    var waitingForAccessibility by rememberSaveable { mutableStateOf(false) }
+    var waitingForBatteryOpt by rememberSaveable { mutableStateOf(false) }
+    var waitingForAutostart by rememberSaveable { mutableStateOf(false) }
+
+    val overlayLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        waitingForOverlay = false
+        onRefreshPermissions()
+        if (!Settings.canDrawOverlays(context)) {
+            onUserCancelled()
+        }
+    }
+
+    val accessibilityLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        waitingForAccessibility = false
+        onRefreshPermissions()
+        if (!hasAccessibilityPermission(context)) {
+            onUserCancelled()
+        }
+    }
 
     var isAppResumed by remember { mutableStateOf(true) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         isAppResumed = true
         onRefreshPermissions()
+
+        if (waitingForOverlay) {
+            waitingForOverlay = false
+            if (!Settings.canDrawOverlays(context)) {
+                onUserCancelled()
+            }
+        }
+        if (waitingForAccessibility) {
+            waitingForAccessibility = false
+            if (!hasAccessibilityPermission(context)) {
+                onUserCancelled()
+            }
+        }
+        if (waitingForBatteryOpt) {
+            waitingForBatteryOpt = false
+            if (!isBatteryOptimizationExempt(context)) {
+                onUserCancelled()
+            }
+        }
+        if (waitingForAutostart) {
+            waitingForAutostart = false
+            if (!hasAutostartPermission) {
+                onUserCancelled()
+            }
+        }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
         isAppResumed = false
@@ -1408,56 +1475,96 @@ private fun PermissionsStep(
 
     val launchOverlay = {
         hasAttemptedOverlay = true
+        waitingForOverlay = true
         try {
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:${context.packageName}")
             )
-            context.startActivity(intent)
+            overlayLauncher.launch(intent)
         } catch (e: Exception) {
             try {
                 val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
-                context.startActivity(intent)
+                overlayLauncher.launch(intent)
             } catch (e2: Exception) {
+                waitingForOverlay = false
                 openAppSettings(context)
             }
         }
     }
 
+    val launchBatteryOptimization = {
+        hasAttemptedBatteryOpt = true
+        waitingForBatteryOpt = true
+        openBatteryOptimizationSettings(context)
+    }
+
     val launchAutostart = {
         hasAttemptedAutostart = true
+        waitingForAutostart = true
         onAutostartClick()
     }
 
     // Auto-launch permissions sequence: hold for half second then launch one by one
     LaunchedEffect(
         isAppResumed,
+        hasUserCancelled,
         hasAccessibilityPermission,
         hasOverlayPermission,
+        hasBatteryOptimizationPermission,
         hasAutostartPermission,
         showAutostartGuidance,
         showAccessibilityDialog,
-        accessibilityDismissed
+        accessibilityDismissed,
+        showWhyPermissionsSheet
     ) {
-        if (!isAppResumed || showAccessibilityDialog) return@LaunchedEffect
+        if (!isAppResumed || showAccessibilityDialog || showWhyPermissionsSheet || hasUserCancelled) return@LaunchedEffect
 
-        // Hold for half a second before auto-launching
-        delay(500)
+        // Hold for 2 seconds before auto-launching
+        delay(2000)
 
-        if (!isAppResumed || showAccessibilityDialog) return@LaunchedEffect
+        if (!isAppResumed || showAccessibilityDialog || showWhyPermissionsSheet || hasUserCancelled) return@LaunchedEffect
 
-        if (!hasAccessibilityPermission) {
+        if (!hasOverlayPermission) {
+            if (!hasAttemptedOverlay) {
+                launchOverlay()
+            }
+        } else if (!hasAccessibilityPermission) {
             if (!hasAttemptedAccessibility && !accessibilityDismissed) {
                 launchAccessibility()
             }
-        } else if (!hasOverlayPermission) {
-            if (!hasAttemptedOverlay) {
-                launchOverlay()
+        } else if (!hasBatteryOptimizationPermission) {
+            if (!hasAttemptedBatteryOpt) {
+                launchBatteryOptimization()
             }
         } else if (showAutostartGuidance && !hasAutostartPermission) {
             if (!hasAttemptedAutostart) {
                 launchAutostart()
             }
+        }
+    }
+
+    val allPermissionsGranted = hasOverlayPermission &&
+        hasAccessibilityPermission &&
+        hasBatteryOptimizationPermission &&
+        (!showAutostartGuidance || hasAutostartPermission)
+
+    val promptPermissionsSequence = {
+        onResetCancelled()
+        hasAttemptedOverlay = false
+        hasAttemptedAccessibility = false
+        hasAttemptedBatteryOpt = false
+        hasAttemptedAutostart = false
+        accessibilityDismissed = false
+
+        if (!hasOverlayPermission) {
+            launchOverlay()
+        } else if (!hasAccessibilityPermission) {
+            launchAccessibility()
+        } else if (!hasBatteryOptimizationPermission) {
+            launchBatteryOptimization()
+        } else if (showAutostartGuidance && !hasAutostartPermission) {
+            launchAutostart()
         }
     }
 
@@ -1492,7 +1599,7 @@ private fun PermissionsStep(
             Icon(
                 imageVector = Icons.Default.Shield,
                 contentDescription = null,
-                tint = Amber500,
+                tint = ModeStrictAccent,
                 modifier = Modifier.size(40.dp)
             )
         }
@@ -1521,19 +1628,38 @@ private fun PermissionsStep(
 
         Spacer(modifier = Modifier.height(36.dp))
 
+        // Display Over Other Apps
+        PermissionCard(
+            icon = Icons.Default.Layers,
+            title = "Display Over Other Apps",
+            description = "Shows the blocker screen when you try to open a blocked app.",
+            isGranted = hasOverlayPermission,
+            onClick = {
+                if (Settings.canDrawOverlays(context)) {
+                    return@PermissionCard
+                }
+                launchOverlay()
+            }
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
         // Accessibility
         if (showAccessibilityDialog) {
             com.flow.shift.core.designsystem.AccessibilityDisclosureDialog(
                 onDismiss = {
                     showAccessibilityDialog = false
                     accessibilityDismissed = true
+                    onUserCancelled()
                 },
                 onAccept = {
                     showAccessibilityDialog = false
+                    waitingForAccessibility = true
                     try {
                         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                        context.startActivity(intent)
+                        accessibilityLauncher.launch(intent)
                     } catch (e: Exception) {
+                        waitingForAccessibility = false
                         openAppSettings(context)
                     }
                 }
@@ -1555,17 +1681,17 @@ private fun PermissionsStep(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Display Over Other Apps
+        // Disable Battery Optimization
         PermissionCard(
-            icon = Icons.Default.Layers,
-            title = "Display Over Other Apps",
-            description = "Shows the blocker screen when you try to open a blocked app.",
-            isGranted = hasOverlayPermission,
+            icon = Icons.Default.BatteryAlert,
+            title = "Disable Battery Optimization",
+            description = "Prevents your phone from killing ReelsRot in the background.",
+            isGranted = hasBatteryOptimizationPermission,
             onClick = {
-                if (Settings.canDrawOverlays(context)) {
+                if (isBatteryOptimizationExempt(context)) {
                     return@PermissionCard
                 }
-                launchOverlay()
+                launchBatteryOptimization()
             }
         )
 
@@ -1584,7 +1710,290 @@ private fun PermissionsStep(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // "Why do I have to keep these permissions on?" button
+        Row(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.06f))
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.12f),
+                    shape = CircleShape
+                )
+                .clickable { showWhyPermissionsSheet = true }
+                .padding(horizontal = 18.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.HelpOutline,
+                contentDescription = null,
+                tint = ModeStrictAccent,
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Why do I have to keep these permissions on?",
+                color = ModeStrictAccent,
+                fontFamily = AppFontFamily,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        if (!allPermissionsGranted) {
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Insignificant "Turn on permissions again" link
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { promptPermissionsSequence() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Turn on permissions again",
+                    color = TextMuted,
+                    fontFamily = AppFontFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Normal
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+    }
+
+    if (showWhyPermissionsSheet) {
+        WhyPermissionsBottomSheet(
+            showAutostart = showAutostartGuidance,
+            onTurnOnPermissions = if (!allPermissionsGranted) promptPermissionsSequence else null,
+            onDismiss = { showWhyPermissionsSheet = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WhyPermissionsBottomSheet(
+    showAutostart: Boolean,
+    onTurnOnPermissions: (() -> Unit)? = null,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF0C1019),
+        scrimColor = Color.Black.copy(alpha = 0.7f),
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                color = Color.White.copy(alpha = 0.35f)
+            )
+        },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Why Enable These?",
+                color = TextPrimary,
+                fontFamily = AppFontFamily,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "Required for ReelsRot to track and block reels reliably.",
+                color = TextSecondary,
+                fontFamily = AppFontFamily,
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 1. Display Over Other Apps
+            WhyPermissionCard(
+                title = "Display Over Other Apps",
+                description = "Shows the blocker screen when limits are reached."
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 2. Accessibility
+            WhyPermissionCard(
+                title = "Accessibility",
+                description = "Detects when you're scrolling Reels or Shorts."
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 3. Disable Battery Optimization
+            WhyPermissionCard(
+                title = "Battery Access",
+                description = "Keeps ReelsRot running reliably in the background."
+            )
+
+            if (showAutostart) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 4. Autostart
+                WhyPermissionCard(
+                    title = "Autostart",
+                    description = "Restarts tracking automatically after phone reboots."
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 5. 100% Data Safe Card (Highlighted)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(ModeStrictAccent.copy(alpha = 0.08f))
+                    .border(
+                        width = 1.5.dp,
+                        color = ModeStrictAccent.copy(alpha = 0.85f),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "Your data is 100% safe",
+                    color = ModeStrictAccent,
+                    fontFamily = AppFontFamily,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "No private data is collected. Everything stays on your device.",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontFamily = AppFontFamily,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // "Got It" Button
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                ),
+                shape = CircleShape
+            ) {
+                Text(
+                    text = "Got It",
+                    fontFamily = AppFontFamily,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (onTurnOnPermissions != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Insignificant "Turn on permissions again" link
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            onDismiss()
+                            onTurnOnPermissions()
+                        }
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Turn on permissions again",
+                        fontFamily = AppFontFamily,
+                        fontSize = 12.sp,
+                        color = TextMuted,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WhyPermissionCard(
+    title: String,
+    description: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF141D2D),
+                        Color(0xFF0F1725)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                color = Color(0xFF1E2D44),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(16.dp)
+    ) {
+        Text(
+            text = title,
+            color = TextPrimary,
+            fontFamily = AppFontFamily,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = description,
+            color = Color.White.copy(alpha = 0.75f),
+            fontFamily = AppFontFamily,
+            fontSize = 13.sp,
+            lineHeight = 18.sp
+        )
     }
 }
 
@@ -1632,7 +2041,7 @@ private fun PermissionCard(
             Icon(
                 imageVector = if (isGranted) Icons.Default.CheckCircle else icon,
                 contentDescription = null,
-                tint = Amber500,
+                tint = ModeStrictAccent,
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -1662,7 +2071,7 @@ private fun PermissionCard(
         if (isGranted) {
             Text(
                 text = "Granted",
-                color = Amber500,
+                color = ModeStrictAccent,
                 fontFamily = AppFontFamily,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
@@ -1671,7 +2080,7 @@ private fun PermissionCard(
             Button(
                 onClick = onClick,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Amber500,
+                    containerColor = ModeStrictAccent,
                     contentColor = SurfaceBlack
                 ),
                 shape = RoundedCornerShape(12.dp),
@@ -1750,7 +2159,7 @@ private fun AllSetStep(
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = null,
-                tint = Amber500,
+                tint = ModeStrictAccent,
                 modifier = Modifier.size(48.dp)
             )
         }
@@ -1770,7 +2179,7 @@ private fun AllSetStep(
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = "You committed to a daily limit of $selectedDailyLimit reels\nusing ${selectedMode.name.lowercase().replaceFirstChar { it.uppercase() }} Mode.",
+            text = "You committed to a daily limit of $selectedDailyLimit reels.",
             color = TextSecondary,
             fontFamily = AppFontFamily,
             fontSize = 16.sp,
@@ -1790,11 +2199,11 @@ private fun AllSetStep(
                 .shadow(
                     elevation = 16.dp,
                     shape = CircleShape,
-                    spotColor = Color(0xFFFF8C00),
-                    ambientColor = Color(0xFFFF8C00)
+                    spotColor = ModeStrictAccent.copy(alpha = 0.5f),
+                    ambientColor = ModeStrictAccent.copy(alpha = 0.5f)
                 ),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFFFFA000),
+                containerColor = ModeStrictAccent,
                 contentColor = Color.Black
             ),
             shape = CircleShape
@@ -1933,6 +2342,36 @@ private fun openAppSettings(context: Context) {
         context.startActivity(intent)
     } catch (e: Exception) {
         // Fallback
+    }
+}
+
+private fun isBatteryOptimizationExempt(context: Context): Boolean {
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return true
+    return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+@SuppressLint("BatteryLife")
+private fun openBatteryOptimizationSettings(context: Context) {
+    if (isBatteryOptimizationExempt(context)) {
+        try {
+            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            return
+        } catch (e: Exception) {
+            openAppSettings(context)
+            return
+        }
+    }
+    try {
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        try {
+            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (e2: Exception) {
+            openAppSettings(context)
+        }
     }
 }
 
